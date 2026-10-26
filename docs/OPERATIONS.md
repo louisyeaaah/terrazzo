@@ -66,6 +66,33 @@ watch the server log for `[engine] step failed` lines.
   in the completion body.
 - A client that disconnects mid-stream aborts its request automatically (KV freed).
 
+## Known gaps / residual risks
+
+These are deliberate limits of the current hardening, not guesses:
+
+- **No GPU-level preemption.** A hung Metal kernel can keep the MLX worker thread
+  blocked; HTTP requests time out (`504`) and the pending queue eventually fills
+  (`503`), but the process may need a restart. `handle_failure()` only runs when
+  `step()` raises, not when it silently hangs.
+- **Paged/Pool runtimes are less hardened.** They terminate per-request exceptions
+  and handlers enforce request deadlines, but they do not have the
+  `Engine.handle_failure()` + unhealthy-after-3-failures path.
+- **Concurrency slots are HTTP threads.** A slow client holding a streaming response
+  occupies a slot until completion; there is no write timeout (only a 30 s read
+  timeout).
+- **No TLS and no constant-time API-key comparison.** Put it behind a reverse proxy
+  if it leaves localhost; the API key is a bearer token, not an auth system.
+- **CI does not run model E2E or the Metal kernel experiments.** The macOS job covers
+  import + core suite + selected MLX unit tests; the `experiments/` kernels and
+  `TERRAZZO_MAC_MODEL` E2E tests need real hardware/model access.
+- **Benchmark cross-backend token counts are not strictly comparable.** Terrazzo now
+  reports true `usage` tokens; backends that do not support
+  `stream_options.include_usage` fall back to SSE content-event counting and are
+  marked `token_source="chunks(approx)"`.
+- **mlx-lm patch contract is version+attribute based**, not behavioural: a patch-level
+  release inside the pinned range could still change cache semantics. `constraints.txt`
+  pins the exact tested versions.
+
 ## Soak / acceptance
 
 ```bash

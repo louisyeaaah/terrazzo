@@ -175,6 +175,8 @@ macOS 上安装固定版本 MLX 依赖跑同一套 + MLX 相关测试。benchmar
   除非显式设置 `TERRAZZO_SKIP_MLX_LM_CHECK=1`。
 - 强制工具调用（指定函数/`required`）是 best-effort：chat template 没有语法约束钩子。
 - `experiments/` 里的 Metal 内核**比 MLX/SDPA 慢**，只作为负结果保留，不是产品路径。
+- GPU 调用无法抢占：请求会按 deadline 返回 `504`，但 worker 线程可能仍卡住、需要重启进程；
+  详见 [docs/OPERATIONS.md](docs/OPERATIONS.md#known-gaps-residual-risks)。
 
 ## License
 

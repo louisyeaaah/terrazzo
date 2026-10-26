@@ -187,6 +187,8 @@ Benchmark numbers, dependency pins and the tested matrix are documented in
   have no grammar hook.
 - Experimental Metal kernels in `experiments/` are **slower** than MLX/SDPA; they are
   kept as documented negative results, not product paths.
+- A hung GPU call cannot be preempted: request deadlines return `504`, but the worker
+  thread may require a process restart. See [docs/OPERATIONS.md](docs/OPERATIONS.md#known-gaps-residual-risks).
 
 ## License
 
