@@ -1,0 +1,45 @@
+#!/bin/bash
+# Terminal chatbot wrapper.
+#   scripts/terrazzo-chat                     # cached Qwen3-4B
+#   scripts/terrazzo-chat /path/to/model      # explicit model dir
+#   scripts/terrazzo-chat --thinking          # flags go straight to `chat`
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PY="${TERRAZZO_PYTHON:-$ROOT/../.venv/bin/python}"
+if [ ! -x "$PY" ]; then
+  echo "python not found at $PY (set TERRAZZO_PYTHON)" >&2
+  exit 1
+fi
+
+MODEL=""
+# only a non-flag first argument is treated as the model path
+if [ $# -gt 0 ] && [ "${1#-}" = "$1" ]; then
+  MODEL="$1"
+  shift
+fi
+MODEL="${MODEL:-${TERRAZZO_MODEL:-}}"
+
+# resolve the default model with Python (robust against glob/pipefail surprises)
+if [ -z "$MODEL" ]; then
+  MODEL="$("$PY" - <<'PY'
+try:
+    from terrazzo.cli import _resolve_model
+    m = _resolve_model("mlx-community/Qwen3-4B-4bit")
+    print("" if m.startswith("mlx-community/") else m)
+except Exception:
+    print("")
+PY
+)"
+fi
+if [ -z "$MODEL" ]; then
+  MODEL="$(ls -d "$ROOT"/../.hf-cache/hub/models--mlx-community--Qwen3-4B-4bit/snapshots/*/ 2>/dev/null | head -1 || true)"
+fi
+if [ -z "$MODEL" ]; then
+  echo "usage: $0 [model-dir] [chat flags...]   (or set TERRAZZO_MODEL)" >&2
+  exit 2
+fi
+case "$MODEL" in
+  -*) echo "internal: resolved model looks like a flag ($MODEL)" >&2; exit 2 ;;
+esac
+echo "[terrazzo-chat] model: $MODEL" >&2
+exec "$PY" -m terrazzo chat --model="$MODEL" --num-gpu-blocks=0 "$@"
