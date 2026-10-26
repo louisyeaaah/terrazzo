@@ -96,6 +96,9 @@ def auto_num_gpu_blocks(model: str, block_size: int, *, kv_fraction: float = 0.3
 
 class Engine:
     def __init__(self, cfg: EngineConfig | None = None, runner=None) -> None:
+        from .compat import require_tested_mlx_lm
+
+        self._mlx_lm_version = require_tested_mlx_lm()
         from .mask_patch import apply_mask_patch
 
         apply_mask_patch()
@@ -204,6 +207,32 @@ class Engine:
     def abort(self, request_id: str) -> bool:
         with self._lock:
             return self.scheduler.abort(request_id)
+
+    def handle_failure(self, exc: BaseException) -> int:
+        """Fatal step error: terminate every in-flight request so no HTTP handler hangs.
+
+        The engine cannot keep the current sequences (KV/scheduler state may be
+        inconsistent); every waiting stream gets a final event carrying the error and
+        the scheduler is told to drop the request. New requests can still be submitted.
+        """
+        with self._lock:
+            ids = list(self._streams)
+            for rid in ids:
+                queue_ = self._streams.pop(rid, None)
+                self._outputs.pop(rid, None)
+                self._inserted.pop(rid, None)
+                try:
+                    self.scheduler.abort(rid)
+                except Exception:
+                    pass
+                if queue_ is not None:
+                    try:
+                        queue_.put({"request_id": rid, "token_ids": [], "finished": True,
+                                    "finish_reason": "error",
+                                    "error": f"{type(exc).__name__}: {exc}"})
+                    except Exception:
+                        pass
+            return len(ids)
 
     # -------------------------------------------------------------------- step
     def step(self) -> list[RequestOutput]:
@@ -508,6 +537,7 @@ class Engine:
         st["prefix_hit_tokens"] = self.prefix_hit_tokens
         st["decode_tokens"] = self.num_decode_tokens
         st["uptime_s"] = round(time.perf_counter() - self.start_time, 2)
+        st["mlx_lm_version"] = getattr(self, "_mlx_lm_version", None)
         if self.prefix_cache is not None:
             st["prefix_cache"] = self.prefix_cache.stats()
         return st

@@ -1,5 +1,7 @@
 # Terrazzo
 
+[![CI](https://github.com/louisyeaaah/terrazzo/actions/workflows/ci.yml/badge.svg)](https://github.com/louisyeaaah/terrazzo/actions/workflows/ci.yml)
+
 **Local LLM inference for Apple Silicon.** · [简体中文](README.zh.md)
 
 Terrazzo is an inference runtime and server for macOS / Apple Silicon, built on
@@ -86,8 +88,9 @@ terrazzo prewarm --base http://127.0.0.1:8080 --system-file system.txt
 ```
 
 16 concurrent sessions × 2 turns × 64 tokens with a 2.5k-token shared prompt:
-**TTFT p50 2.26 s / p95 2.87 s, 95.8 tok/s aggregate** (prewarm + `--profile agent`),
-versus 8–11 s p50 on the default 8-slot configuration. See [BENCHMARKS.md §44](BENCHMARKS.md).
+**TTFT p50 2.28 s / p95 3.44 s, 87.5 tok/s aggregate** (prewarm + `--profile agent`),
+versus 8–11 s p50 on the default 8-slot configuration. These are server-usage-counted
+tokens with real multi-turn answers; see [BENCHMARKS.md §44/§46](BENCHMARKS.md).
 
 ## CLI (Ollama mapping)
 
@@ -148,11 +151,18 @@ BENCHMARKS.md      every measurement, including the ones that lost
 ## Tests and benchmarks
 
 ```bash
-python -m unittest discover -s tests                  # core suite (200 tests, 1 skipped)
+python -m unittest discover -s tests                  # core suite (215 tests, 1 skipped)
 python -m unittest discover -s experiments/tests -v   # experimental kernels (31 tests)
+python scripts/ci_core_tests.py                       # pure-Python subset with MLX blocked
 bash bench/head_to_head.sh                            # Ollama head-to-head
 python bench/agent_workload.py --base ... --sessions 16
 ```
+
+CI runs two jobs: a Linux job that executes the pure-Python suite with MLX blocked
+(proving the scheduler/HTTP layer does not need Apple Silicon) and a macOS job that
+installs the pinned MLX dependencies and runs the same suite with MLX available.
+Benchmark numbers, dependency pins and the tested matrix are documented in
+[docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
 
 ## Docs
 
@@ -160,6 +170,7 @@ python bench/agent_workload.py --base ... --sessions 16
 - [docs/COMPARISON.en.md](docs/COMPARISON.en.md) · [简体中文](docs/COMPARISON.zh.md) — vs Ollama / vLLM, decision matrix
 - [BENCHMARKS.md](BENCHMARKS.md) — all benchmark data and negative results
 - [DESIGN.md](DESIGN.md) — what is ported and why
+- [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) — pinned/tested MLX versions and the runtime-patch contract
 - [MAC-TURBO.md](MAC-TURBO.md) — MacTurbo: predicting reachable tok/s before serving
 
 ## Limitations (nothing faked)
@@ -168,8 +179,10 @@ python bench/agent_workload.py --base ... --sessions 16
   Ollama if you need GGUF.
 - **No `/v1/embeddings`** — generation models only.
 - Single machine, single loaded model; no multi-GPU/distributed.
-- p50 agent TTFT is 2.26 s under load (target was ≤2 s): the remaining cost is mlx-lm's
+- p50 agent TTFT is 2.28 s under load (target was ≤2 s): the remaining cost is mlx-lm's
   per-sequence copy of the shared prefix; the paged-sharing fix was evaluated and lost.
+- mlx-lm is pinned to `>=0.31.3,<0.32` because runtime patches touch its cache internals;
+  the engine refuses to start outside that range unless `TERRAZZO_SKIP_MLX_LM_CHECK=1`.
 - Forcing tool calls (`tool_choice` specific/`required`) is best-effort; chat templates
   have no grammar hook.
 - Experimental Metal kernels in `experiments/` are **slower** than MLX/SDPA; they are

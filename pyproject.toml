@@ -9,7 +9,10 @@ description = "Terrazzo — local LLM inference for Apple Silicon (paged KV sche
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
-dependencies = ["mlx-lm>=0.31"]
+dependencies = [
+    "mlx>=0.32.4,<0.33",
+    "mlx-lm>=0.31.3,<0.32",
+]
 
 [project.scripts]
 terrazzo = "terrazzo.cli:main"

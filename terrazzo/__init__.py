@@ -21,28 +21,40 @@ Public API:
     print(engine.generate("你好", max_tokens=64))
 """
 
-from .blocks import BlockManager, BlockManagerConfig
-from .engine import Engine, EngineConfig, RequestOutput
-from .paged_kv import PagedKVCache, PagedPrefixCache, SharedPrefix
-from .paged_session import PagedSession
-from .scheduler import Scheduler, SchedulerConfig, SchedulerOutputs
-from .sequence import Sequence, SequenceStatus
+from importlib import import_module
 
-__all__ = [
-    "BlockManager",
-    "BlockManagerConfig",
-    "Engine",
-    "EngineConfig",
-    "PagedKVCache",
-    "PagedPrefixCache",
-    "PagedSession",
-    "RequestOutput",
-    "Scheduler",
-    "SchedulerConfig",
-    "SchedulerOutputs",
-    "Sequence",
-    "SequenceStatus",
-    "SharedPrefix",
-]
+_EXPORTS = {
+    "BlockManager": "blocks",
+    "BlockManagerConfig": "blocks",
+    "Engine": "engine",
+    "EngineConfig": "engine",
+    "RequestOutput": "engine",
+    "PagedKVCache": "paged_kv",
+    "PagedPrefixCache": "paged_kv",
+    "SharedPrefix": "paged_kv",
+    "PagedSession": "paged_session",
+    "Scheduler": "scheduler",
+    "SchedulerConfig": "scheduler",
+    "SchedulerOutputs": "scheduler",
+    "Sequence": "sequence",
+    "SequenceStatus": "sequence",
+}
+
+__all__ = sorted(_EXPORTS)
+
+
+def __getattr__(name: str):
+    """Import heavy submodules (and MLX) only when a symbol is actually used.
+
+    ``import terrazzo`` and the pure-Python scheduler/block tests must work on a
+    machine without MLX (e.g. Linux CI); ``from terrazzo import Engine`` still works.
+    """
+    module = _EXPORTS.get(name)
+    if module is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(import_module(f".{module}", __name__), name)
+    globals()[name] = value
+    return value
+
 
 __version__ = "0.3.0"

@@ -4,14 +4,25 @@ multi-turn. Works against any OpenAI-compatible server.
     python bench/agent_workload.py --base http://127.0.0.1:8501 --model terrazzo \
         --label ours --sessions 4 --turns 2 --system-tokens 2000 --max-tokens 64
 
-Metrics: aggregate tok/s, per-session tok/s, TTFT p50/p95, peak server RSS (MB),
-and the token count of the system prompt (from usage).
+Token accounting: each request asks for ``stream_options.include_usage`` and the
+aggregate throughput uses the server-reported ``completion_tokens``. If a backend
+does not report usage (older servers), the script falls back to counting non-empty
+content events and marks the result ``token_source: "chunks(approx)"`` — those
+numbers must not be compared across backends as strict token counts.
+
+Multi-turn conversations feed the real assistant answer into the next turn (the
+shared system prompt keeps being the common prefix, like real agent traffic).
+
+Every run records environment metadata (host, Python, git commit, backend version,
+load average, /stats deltas when available) so results are reproducible.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
+import platform
 import statistics
 import subprocess
 import sys
@@ -19,6 +30,7 @@ import threading
 import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 FILLER = (
     "背景资料：本系统是一个运维知识库助手，需要依据下面的规范回答用户问题。"
@@ -78,19 +90,65 @@ def find_pid(port: int) -> int | None:
         return None
 
 
+def _get_json(url: str, timeout: float = 5.0):
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            return json.loads(r.read().decode())
+    except Exception:
+        return None
+
+
+def probe_environment(base: str, stats_url: str | None) -> dict:
+    """Capture what is needed to reproduce/compare a run."""
+    env = {
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "hostname": platform.node(),
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        "python": platform.python_version(),
+        "cpu_count": os.cpu_count(),
+    }
+    try:
+        env["loadavg"] = list(os.getloadavg())
+    except (AttributeError, OSError):
+        env["loadavg"] = None
+    try:
+        out = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], text=True,
+            cwd=str(Path(__file__).resolve().parents[1]), stderr=subprocess.DEVNULL)
+        env["git_commit"] = out.strip()
+    except Exception:
+        env["git_commit"] = None
+    try:
+        import terrazzo  # noqa: F401
+
+        env["terrazzo_version"] = getattr(terrazzo, "__version__", None)
+    except Exception:
+        env["terrazzo_version"] = None
+    backend = _get_json(base.rstrip("/") + "/api/version")
+    if isinstance(backend, dict) and "version" in backend:
+        env["backend_version"] = backend["version"]
+    if stats_url:
+        env["stats"] = _get_json(stats_url) or {"error": "unavailable"}
+    return env
+
+
 def chat(base: str, model: str, messages: list[dict], max_tokens: int) -> dict:
-    """One streaming request; returns ttft_s, tokens, total_s."""
+    """One streaming request; returns ttft, token usage, content and timings."""
     body = json.dumps({
         "model": model, "messages": messages, "max_tokens": max_tokens,
         "temperature": 0.0, "stream": True,
+        "stream_options": {"include_usage": True},
     }).encode()
     req = urllib.request.Request(
         base.rstrip("/") + "/v1/chat/completions", data=body,
         headers={"Content-Type": "application/json"})
     t0 = time.perf_counter()
     ttft = None
-    n_tokens = 0
+    content_events = 0
+    content: list[str] = []
     prompt_tokens = None
+    completion_tokens = None
     with urllib.request.urlopen(req, timeout=600) as resp:
         for raw in resp:
             line = raw.decode("utf-8", "ignore").strip()
@@ -104,8 +162,10 @@ def chat(base: str, model: str, messages: list[dict], max_tokens: int) -> dict:
             except Exception:
                 continue
             usage = obj.get("usage") or {}
-            if usage.get("prompt_tokens"):
-                prompt_tokens = usage["prompt_tokens"]
+            if usage.get("prompt_tokens") is not None:
+                prompt_tokens = usage.get("prompt_tokens")
+            if usage.get("completion_tokens") is not None:
+                completion_tokens = usage.get("completion_tokens")
             choices = obj.get("choices") or []
             if not choices:
                 continue
@@ -114,10 +174,18 @@ def chat(base: str, model: str, messages: list[dict], max_tokens: int) -> dict:
             if piece:
                 if ttft is None:
                     ttft = time.perf_counter() - t0
-                n_tokens += 1
+                content_events += 1
+                content.append(piece)
     total = time.perf_counter() - t0
-    return {"ttft_s": ttft if ttft is not None else total, "tokens": n_tokens,
-            "total_s": total, "prompt_tokens": prompt_tokens}
+    if completion_tokens is not None:
+        tokens, token_source = int(completion_tokens), "usage"
+    else:
+        tokens, token_source = content_events, "chunks(approx)"
+    return {"ttft_s": ttft if ttft is not None else total,
+            "tokens": tokens, "token_source": token_source,
+            "content_events": content_events,
+            "total_s": total, "prompt_tokens": prompt_tokens,
+            "content": "".join(content)}
 
 
 def run_session(base: str, model: str, system: str, turns: int, max_tokens: int,
@@ -128,8 +196,8 @@ def run_session(base: str, model: str, system: str, turns: int, max_tokens: int,
         history.append({"role": "user", "content": f"{user_text}（第 {t + 1} 轮）"})
         r = chat(base, model, history, max_tokens)
         out.append(r)
-        # keep the assistant turn for the next round (prefix grows like a real agent)
-        history.append({"role": "assistant", "content": "已收到，下面是回答。"})
+        # carry the real answer into the next turn (agent-like growing conversation)
+        history.append({"role": "assistant", "content": r["content"]})
     return out
 
 
@@ -154,8 +222,10 @@ def main() -> int:
     system = (open(args.system_file).read() if args.system_file
               else build_system_prompt(args.system_tokens))
 
+    env_before = probe_environment(args.base, args.stats)
     # warm up the server (first request compiles kernels / fills caches)
     chat(args.base, args.model, [{"role": "user", "content": "热身：你好"}], 8)
+    stats_before = _get_json(args.stats) if args.stats else None
 
     t0 = time.perf_counter()
     with ThreadPoolExecutor(max_workers=args.sessions) as pool:
@@ -178,7 +248,19 @@ def main() -> int:
     flat = [r for session in results for r in session]
     ttfts = [r["ttft_s"] for r in flat]
     output_tokens = sum(r["tokens"] for r in flat)
+    content_events = sum(r.get("content_events", 0) for r in flat)
+    sources = sorted({r["token_source"] for r in flat})
+    token_source = sources[0] if len(sources) == 1 else "mixed"
     prompt_tokens = max((r["prompt_tokens"] or 0) for r in flat)
+
+    server_delta = {}
+    if isinstance(stats_before, dict) and isinstance(server_stats, dict):
+        for key in ("decode_tokens", "prefill_tokens", "steps", "prefix_hit_tokens"):
+            if key in server_stats and key in stats_before:
+                server_delta[key] = server_stats[key] - stats_before[key]
+        if server_delta.get("decode_tokens"):
+            d = server_delta["decode_tokens"]
+            server_delta["decode_tok_s"] = round(d / wall, 1)
 
     summary = {
         "label": args.label, "base": args.base, "model": args.model,
@@ -187,12 +269,17 @@ def main() -> int:
         "max_tokens": args.max_tokens,
         "wall_s": round(wall, 2),
         "output_tokens": output_tokens,
+        "content_events": content_events,
+        "token_source": token_source,
         "aggregate_tok_s": round(output_tokens / wall, 1) if wall else 0.0,
         "per_session_tok_s": round(output_tokens / wall / args.sessions, 1) if wall else 0.0,
+        "server_decode_tokens": server_delta.get("decode_tokens"),
+        "server_decode_tok_s": server_delta.get("decode_tok_s"),
         "ttft_p50_s": round(statistics.median(ttfts), 3),
         "ttft_p95_s": round(sorted(ttfts)[max(0, int(len(ttfts) * 0.95) - 1)], 3),
         "ttft_min_s": round(min(ttfts), 3),
         "peak_rss_mb": round(rss_peak, 0),
+        "environment": env_before,
         "server_memory": {k: v for k, v in server_stats.items()
                           if k in ("mlx_active_mb", "mlx_peak_mb", "mlx_cache_mb", "used",
                                    "num_blocks", "block_size", "prefix_cache", "runtime", "auto_prefix")},

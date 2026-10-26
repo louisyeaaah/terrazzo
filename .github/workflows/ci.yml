@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  core-no-mlx:
+    name: Core tests (pure Python, MLX blocked)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Pure-Python suite (imports MLX-blocked)
+        run: python scripts/ci_core_tests.py
+      - name: Byte-compile package and scripts
+        run: python -m compileall -q terrazzo bench experiments
+
+  macos-mlx:
+    name: macOS (MLX) import + tests
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install with pinned dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . -c constraints.txt
+      - name: Import MLX and terrazzo
+        run: |
+          python -c "import mlx.core as mx, terrazzo; print('terrazzo', terrazzo.__version__)"
+          python -c "from terrazzo.compat import require_tested_mlx_lm; print('mlx-lm', require_tested_mlx_lm())"
+      - name: Core suite with MLX available
+        env:
+          TERRAZZO_CI_ALLOW_MLX: "1"
+        run: python scripts/ci_core_tests.py
+      - name: MLX-dependent unit tests (no model download)
+        run: python -m unittest tests.test_auto_blocks tests.test_mask_patch -v

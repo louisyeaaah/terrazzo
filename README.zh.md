@@ -1,5 +1,7 @@
 # Terrazzo
 
+[![CI](https://github.com/louisyeaaah/terrazzo/actions/workflows/ci.yml/badge.svg)](https://github.com/louisyeaaah/terrazzo/actions/workflows/ci.yml)
+
 **Apple Silicon 上的本地 LLM 推理服务。** · [English](README.md)
 
 Terrazzo 是面向 macOS / Apple Silicon 的推理运行时与服务端，基于
@@ -80,8 +82,9 @@ terrazzo serve --model Qwen3-4B-4bit --profile agent --system-file system.txt
 terrazzo prewarm --base http://127.0.0.1:8080 --system-file system.txt
 ```
 
-16 会话 × 2 轮 × 64 token、2.5k 共享提示：**TTFT p50 2.26 s / p95 2.87 s，聚合 95.8 tok/s**
-（prewarm + `--profile agent`）；默认 8 槽配置下 p50 为 8–11 s。见 [BENCHMARKS.md §44](BENCHMARKS.md)。
+16 会话 × 2 轮 × 64 token、2.5k 共享提示：**TTFT p50 2.28 s / p95 3.44 s，聚合 87.5 tok/s**
+（prewarm + `--profile agent`）；默认 8 槽配置下 p50 为 8–11 s。数字用服务端 usage 计 token、
+多轮喂真实回答，见 [BENCHMARKS.md §44/§46](BENCHMARKS.md)。
 
 ## CLI（Ollama 对照）
 
@@ -141,11 +144,16 @@ BENCHMARKS.md      所有测量数据，包括输掉的那些
 ## 测试与基准
 
 ```bash
-python -m unittest discover -s tests                  # 核心套件（200 个测试，1 skipped）
+python -m unittest discover -s tests                  # 核心套件（215 个测试，1 skipped）
 python -m unittest discover -s experiments/tests -v   # 实验内核（31 个测试）
+python scripts/ci_core_tests.py                       # MLX 被 block 的纯 Python 子集
 bash bench/head_to_head.sh                            # 与 Ollama 的 head-to-head
 python bench/agent_workload.py --base ... --sessions 16
 ```
+
+CI 两个 job：Linux 上 block 掉 MLX 跑纯 Python 套件（证明调度器/HTTP 层不依赖 Apple Silicon），
+macOS 上安装固定版本 MLX 依赖跑同一套 + MLX 相关测试。benchmark 数字、依赖固定和测试矩阵见
+[docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)。
 
 ## 文档
 
@@ -153,6 +161,7 @@ python bench/agent_workload.py --base ... --sessions 16
 - [docs/COMPARISON.zh.md](docs/COMPARISON.zh.md) · [English](docs/COMPARISON.en.md) — vs Ollama / vLLM、决策矩阵
 - [BENCHMARKS.md](BENCHMARKS.md) — 全部基准数据与负结果
 - [DESIGN.md](DESIGN.md) — 移植了什么、为什么
+- [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) — 固定/验证过的 MLX 版本与 runtime patch 兼容契约
 - [MAC-TURBO.md](MAC-TURBO.md) — MacTurbo：服务启动前预测可达 tok/s
 
 ## 限制（不假装支持）
@@ -160,8 +169,10 @@ python bench/agent_workload.py --base ... --sessions 16
 - **不支持 Ollama registry / GGUF tag**：`pull` 下载 Hugging Face 的 MLX 快照；需要 GGUF 请继续用 Ollama。
 - **不支持 `/v1/embeddings`**：只有生成模型。
 - 单机、单模型常驻；不支持多卡/分布式。
-- 负载下 agent TTFT p50 为 2.26 s（目标 ≤2 s）：剩余成本来自 mlx-lm 把共享前缀复制进每个序列；
+- 负载下 agent TTFT p50 为 2.28 s（目标 ≤2 s）：剩余成本来自 mlx-lm 把共享前缀复制进每个序列；
   paged 共享方案评估过并失败（见 BENCHMARKS）。
+- mlx-lm 固定在 `>=0.31.3,<0.32`（runtime patch 依赖其 cache 内部实现）；超出范围时引擎拒绝启动，
+  除非显式设置 `TERRAZZO_SKIP_MLX_LM_CHECK=1`。
 - 强制工具调用（指定函数/`required`）是 best-effort：chat template 没有语法约束钩子。
 - `experiments/` 里的 Metal 内核**比 MLX/SDPA 慢**，只作为负结果保留，不是产品路径。
 

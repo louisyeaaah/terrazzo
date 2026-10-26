@@ -1,0 +1,4 @@
+# Exact versions Terrazzo 0.3.0 is tested with (see docs/COMPATIBILITY.md).
+# Install with: python -m pip install -e . -c constraints.txt
+mlx==0.32.4
+mlx-lm==0.31.3

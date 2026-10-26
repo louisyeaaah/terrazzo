@@ -22,7 +22,6 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from .engine import Engine, EngineConfig
 from .sequence import SamplingParams
 
 TokenDelta = dict
@@ -78,7 +77,8 @@ class BaseRuntime:
     model_path: str | None = None
 
     def submit(self, prompt_ids: list[int], params: SamplingParams,
-               request_id: str | None = None) -> tuple[str, "queue.Queue"]:
+               request_id: str | None = None,
+               timeout: float | None = None) -> tuple[str, "queue.Queue"]:
         raise NotImplementedError
 
     def stats(self) -> dict:
@@ -201,12 +201,17 @@ class EngineRuntime(BaseRuntime):
         # the same thread, so the whole engine lives in this worker thread.
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
-        self._ready.wait()
+        if not self._ready.wait(timeout=300):
+            raise TimeoutError("engine worker did not initialise within 300s")
         if self._init_error is not None:
             raise self._init_error
+        self._active_failures = 0
+        self._unhealthy = False
 
     def _loop(self) -> None:
         try:
+            from .engine import Engine
+
             self.engine = Engine(self._cfg)
             self.tokenizer = self.engine.runner.tokenizer
             self._baseline_mb = self._mx.get_active_memory() / 1e6
@@ -264,11 +269,31 @@ class EngineRuntime(BaseRuntime):
                 try:
                     self.engine.step()
                 except RuntimeError as exc:
-                    # Metal OOM and friends: drop caches, mark hostile state, keep serving
+                    # Metal OOM and friends: drop caches, fail the in-flight requests
+                    # explicitly (otherwise their HTTP handlers wait forever), and keep
+                    # serving. After repeated failures the runtime refuses new work.
                     self._mx.clear_cache()
                     self._over_memory = True
                     self._memory_evictions += 1
-                    print(f"[memory-guard] step failed: {exc}", flush=True)
+                    self._active_failures += 1
+                    failed = 0
+                    try:
+                        failed = self.engine.handle_failure(exc)
+                    except Exception:
+                        pass
+                    with self._pending_lock:
+                        pending, self._pending = self._pending, []
+                    for slot in pending:
+                        slot["error"] = exc
+                        slot["event"].set()
+                    failed += len(pending)
+                    print(f"[engine] step failed ({self._active_failures}): {exc}; "
+                          f"terminated {failed} request(s)", flush=True)
+                    if self._active_failures >= 3:
+                        self._unhealthy = True
+                        print("[engine] too many consecutive step failures; new requests "
+                              "will be rejected until restart", flush=True)
+                self._active_failures = 0
                 self._steps_since_admit += 1
             else:
                 time.sleep(0.002)
@@ -384,7 +409,10 @@ class EngineRuntime(BaseRuntime):
         except Exception as exc:  # pragma: no cover - surfaced via /stats
             self._auto_prefix_stats["errors"].append(f"{type(exc).__name__}: {exc}")
 
-    def submit(self, prompt_ids, params, request_id=None):
+    def submit(self, prompt_ids, params, request_id=None, timeout=None):
+        if getattr(self, "_unhealthy", False):
+            raise MemoryError("engine worker is unhealthy after repeated step failures; "
+                              "restart the server")
         if self._over_memory:
             self._memory_rejections += 1
             raise MemoryError(
@@ -392,11 +420,30 @@ class EngineRuntime(BaseRuntime):
         rid = request_id or f"req-{uuid.uuid4().hex[:10]}"
         slot = {"rid": rid, "prompt_ids": prompt_ids, "params": params,
                 "event": threading.Event(), "stream": None, "error": None}
+        max_pending = int(os.environ.get("TERRAZZO_MAX_PENDING", "256"))
         with self._pending_lock:
+            if len(self._pending) >= max_pending:
+                raise MemoryError(
+                    f"pending request queue is full ({max_pending} requests); retry later")
             self._pending.append(slot)
-        slot["event"].wait(timeout=900)
+        wait_s = 900.0 if timeout is None else max(0.001, float(timeout))
+        if not slot["event"].wait(timeout=wait_s):
+            with self._pending_lock:
+                try:
+                    self._pending.remove(slot)
+                except ValueError:
+                    pass  # already drained by the worker; abort it below
+            engine = getattr(self, "engine", None)
+            if engine is not None:
+                try:
+                    engine.abort(rid)
+                except Exception:
+                    pass
+            raise TimeoutError(f"request {rid} was not admitted within {wait_s:.1f}s")
         if slot.get("error") is not None:
             raise slot["error"]
+        if slot.get("stream") is None:
+            raise RuntimeError(f"request {rid} was admitted without a stream")
         return rid, slot["stream"]
 
     def _run_on_worker(self, fn, timeout: float = 900.0):
@@ -486,9 +533,12 @@ class PagedRuntime(BaseRuntime):
         # MLX streams are thread-local: load + generate on the same thread.
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
-        self._ready.wait()
+        if not self._ready.wait(timeout=300):
+            raise TimeoutError("engine worker did not initialise within 300s")
         if self._init_error is not None:
             raise self._init_error
+        self._active_failures = 0
+        self._unhealthy = False
 
     def _init(self) -> None:
         from mlx_lm import load as mlx_load
@@ -543,9 +593,9 @@ class PagedRuntime(BaseRuntime):
                        "stats": stats.as_dict()})
             except Exception as exc:  # keep the server alive
                 q.put({"request_id": request_id, "token_ids": [], "finished": True,
-                       "finish_reason": f"error: {exc}"})
+                       "finish_reason": "error", "error": str(exc)})
 
-    def submit(self, prompt_ids, params, request_id=None):
+    def submit(self, prompt_ids, params, request_id=None, timeout=None):
         request_id = request_id or f"req-{uuid.uuid4().hex[:10]}"
         q: "queue.Queue" = queue.Queue()
         self._queue.put((request_id, prompt_ids, params, q))
@@ -592,9 +642,12 @@ class PoolRuntime(BaseRuntime):
         self.num_tokens = 0
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
-        self._ready.wait()
+        if not self._ready.wait(timeout=300):
+            raise TimeoutError("engine worker did not initialise within 300s")
         if self._init_error is not None:
             raise self._init_error
+        self._active_failures = 0
+        self._unhealthy = False
 
     def _init(self) -> None:
         from mlx_lm import load as mlx_load
@@ -654,7 +707,7 @@ class PoolRuntime(BaseRuntime):
                 q.put({"request_id": request_id, "token_ids": [], "finished": True,
                        "finish_reason": f"error: {exc}"})
 
-    def submit(self, prompt_ids, params, request_id=None):
+    def submit(self, prompt_ids, params, request_id=None, timeout=None):
         request_id = request_id or f"req-{uuid.uuid4().hex[:10]}"
         q: "queue.Queue" = queue.Queue()
         self._queue.put((request_id, prompt_ids, params, q))
@@ -697,8 +750,15 @@ def _sampling_from_body(body: dict, defaults: dict | None = None) -> SamplingPar
     )
 
 
+class PayloadTooLarge(Exception):
+    def __init__(self, size: int):
+        self.size = size
+        super().__init__(f"request body too large: {size} bytes")
+
+
 def make_handler(runtime: BaseRuntime, *, api_key: str | None = None,
-                 rate_limit_rps: float = 0.0):
+                 rate_limit_rps: float = 0.0, request_timeout_s: float = 600.0,
+                 max_body_bytes: int = 1 << 20):
     bucket = {"tokens": float(rate_limit_rps or 0.0), "last": time.time()}
     bucket_lock = threading.Lock()
 
@@ -717,6 +777,8 @@ def make_handler(runtime: BaseRuntime, *, api_key: str | None = None,
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
+        # idle/read timeout for a single request (slowloris protection)
+        timeout = 30
 
         def log_message(self, fmt, *args):
             pass
@@ -751,9 +813,45 @@ def make_handler(runtime: BaseRuntime, *, api_key: str | None = None,
                 "finish_reason": getattr(delta, "finish_reason", None),
             }
 
+        def _deadline_reset(self) -> None:
+            self._deadline = time.perf_counter() + request_timeout_s
+
+        def _remaining(self) -> float:
+            deadline = getattr(self, "_deadline", None)
+            if deadline is None:
+                return request_timeout_s
+            return deadline - time.perf_counter()
+
+        def _submit(self, prompt_ids, params, request_id):
+            return runtime.submit(prompt_ids, params, request_id=request_id,
+                                  timeout=max(0.001, self._remaining()))
+
+        def _qget(self, q, request_id):
+            remaining = self._remaining()
+            if remaining <= 0:
+                raise TimeoutError(f"request {request_id} timed out")
+            try:
+                return q.get(timeout=remaining)
+            except queue.Empty:
+                raise TimeoutError(
+                    f"request {request_id} exceeded the {request_timeout_s:.0f}s deadline")
+
         def _read_body(self) -> dict:
-            n = int(self.headers.get("Content-Length", 0))
-            return json.loads(self.rfile.read(n) or b"{}")
+            if self.headers.get("Transfer-Encoding"):
+                raise ValueError("chunked request bodies are not supported")
+            raw_len = self.headers.get("Content-Length")
+            if raw_len is None:
+                raise ValueError("Content-Length required")
+            try:
+                n = int(raw_len)
+            except ValueError as exc:
+                raise ValueError("invalid Content-Length") from exc
+            if n < 0:
+                raise ValueError("invalid Content-Length")
+            if n > max_body_bytes:
+                raise PayloadTooLarge(n)
+            data = self.rfile.read(n) or b"{}"
+            return json.loads(data)
 
         # ------------------------------------------------------- Ollama API ---
         def _start_ndjson(self) -> None:
@@ -833,24 +931,30 @@ def make_handler(runtime: BaseRuntime, *, api_key: str | None = None,
                     self._json(200, frame(done=True, done_reason="stop", eval_count=n, **body_msg))
                 return
             try:
-                _rid, q = runtime.submit(prompt_ids, params, request_id=body.get("request_id"))
+                _rid, q = self._submit(prompt_ids, params, body.get("request_id"))
             except MemoryError as exc:
                 return self._ollama_error(503, str(exc))
+            except TimeoutError as exc:
+                return self._ollama_error(504, str(exc))
             except Exception as exc:
                 return self._ollama_error(500, f"submit failed: {exc}")
 
             if tools:
                 # tool calls are emitted as one message after a buffered generation
                 tokens: list[int] = []
-                while True:
-                    d = self._norm(q.get())
-                    ids = d.get("token_ids") or []
-                    if d.get("finished") and len(ids) > 1:
-                        tokens = list(ids)
-                    else:
-                        tokens.extend(ids)
-                    if d.get("finished"):
-                        break
+                try:
+                    while True:
+                        d = self._norm(self._qget(q, _rid))
+                        ids = d.get("token_ids") or []
+                        if d.get("finished") and len(ids) > 1:
+                            tokens = list(ids)
+                        else:
+                            tokens.extend(ids)
+                        if d.get("finished"):
+                            break
+                except TimeoutError as exc:
+                    runtime.abort(_rid)
+                    return self._ollama_error(504, str(exc))
                 from .tools import split_thinking
 
                 thinking_text, answer_text = split_thinking(runtime.decode(tokens))
@@ -875,51 +979,59 @@ def make_handler(runtime: BaseRuntime, *, api_key: str | None = None,
             printed = 0
             printed_think = 0
             stopped = False
-            while True:
-                d = self._norm(q.get())
-                ids = d.get("token_ids") or []
-                if d.get("finished") and len(ids) > 1:
-                    out = list(ids)
+            try:
+                while True:
+                    d = self._norm(self._qget(q, _rid))
+                    ids = d.get("token_ids") or []
+                    if d.get("finished") and len(ids) > 1:
+                        out = list(ids)
+                    else:
+                        out.extend(ids)
+                    text = runtime.decode(out)
+                    safe = text.rstrip("\ufffd")
+                    thinking_text, answer_text = split_thinking(safe)
+                    # hold back a partial "<think>" tag so it never leaks as content
+                    for n in range(6, 0, -1):
+                        if answer_text.endswith("<think>"[:n]) and not answer_text.endswith("<think>"):
+                            answer_text = answer_text[:-n]
+                    delta = answer_text[printed:]
+                    if stop:
+                        cut = len(answer_text)
+                        hit = False
+                        for marker in stop:
+                            idx = answer_text.find(marker)
+                            if idx >= 0:
+                                cut = min(cut, idx)
+                                hit = True
+                        if cut < len(answer_text):
+                            delta = answer_text[printed:cut]
+                        if hit:
+                            stopped = True
+                    think_delta = thinking_text[printed_think:] if think else ""
+                    if delta and stream:
+                        if chat:
+                            self._nd(frame(message={"role": "assistant", "content": delta}))
+                        else:
+                            self._nd(frame(response=delta))
+                        printed = len(answer_text) if not stopped else printed + len(delta)
+                    elif delta:
+                        printed = len(answer_text)
+                    if think_delta and stream:
+                        if chat:
+                            self._nd(frame(message={"role": "assistant", "content": "",
+                                                    "thinking": think_delta}))
+                        else:
+                            self._nd(frame(thinking=think_delta))
+                    printed_think = len(thinking_text)
+                    if d.get("finished") or stopped:
+                        break
+            except TimeoutError as exc:
+                runtime.abort(_rid)
+                if stream:
+                    self._nd(frame(done=True, done_reason="error", error=str(exc)))
                 else:
-                    out.extend(ids)
-                text = runtime.decode(out)
-                safe = text.rstrip("\ufffd")
-                thinking_text, answer_text = split_thinking(safe)
-                # hold back a partial "<think>" tag so it never leaks as content
-                for n in range(6, 0, -1):
-                    if answer_text.endswith("<think>"[:n]) and not answer_text.endswith("<think>"):
-                        answer_text = answer_text[:-n]
-                delta = answer_text[printed:]
-                if stop:
-                    cut = len(answer_text)
-                    hit = False
-                    for marker in stop:
-                        idx = answer_text.find(marker)
-                        if idx >= 0:
-                            cut = min(cut, idx)
-                            hit = True
-                    if cut < len(answer_text):
-                        delta = answer_text[printed:cut]
-                    if hit:
-                        stopped = True
-                think_delta = thinking_text[printed_think:] if think else ""
-                if delta and stream:
-                    if chat:
-                        self._nd(frame(message={"role": "assistant", "content": delta}))
-                    else:
-                        self._nd(frame(response=delta))
-                    printed = len(answer_text) if not stopped else printed + len(delta)
-                elif delta:
-                    printed = len(answer_text)
-                if think_delta and stream:
-                    if chat:
-                        self._nd(frame(message={"role": "assistant", "content": "",
-                                                "thinking": think_delta}))
-                    else:
-                        self._nd(frame(thinking=think_delta))
-                printed_think = len(thinking_text)
-                if d.get("finished") or stopped:
-                    break
+                    self._ollama_error(504, str(exc))
+                return
             timing = self._ollama_timing(t0, prompt_ids, out)
             done_reason = "stop"
             if stream:
@@ -1213,14 +1325,21 @@ def make_handler(runtime: BaseRuntime, *, api_key: str | None = None,
 
         # -------------------------------------------------------------- POST
         def do_POST(self):  # noqa: N802
-            try:
-                body = self._read_body()
-            except Exception:
-                self._json(400, {"error": "invalid json"})
-                return
+            # auth first: never read an untrusted request body before authentication
             if not self._authorized():
                 self._json(401, {"error": {"type": "unauthorized",
                                            "message": "missing or invalid Bearer token"}})
+                return
+            self._deadline_reset()
+            try:
+                body = self._read_body()
+            except PayloadTooLarge as exc:
+                self._json(413, {"error": {"type": "payload_too_large",
+                                           "message": str(exc),
+                                           "max_bytes": max_body_bytes}})
+                return
+            except Exception:
+                self._json(400, {"error": "invalid json"})
                 return
             path_only = self.path.split("?", 1)[0]
             if path_only.startswith("/api/"):
@@ -1336,14 +1455,19 @@ def make_handler(runtime: BaseRuntime, *, api_key: str | None = None,
                 self._json(404, {"error": "not found"})
 
         def do_DELETE(self):  # noqa: N802
-            try:
-                body = self._read_body()
-            except Exception:
-                body = {}
             if not self._authorized():
                 self._json(401, {"error": {"type": "unauthorized",
                                            "message": "missing or invalid Bearer token"}})
                 return
+            self._deadline_reset()
+            try:
+                body = self._read_body()
+            except PayloadTooLarge as exc:
+                self._json(413, {"error": {"type": "payload_too_large",
+                                           "message": str(exc)}})
+                return
+            except Exception:
+                body = {}
             path_only = self.path.split("?", 1)[0]
             if path_only.startswith("/api/"):
                 self._ollama_api(path_only, body)
@@ -1358,7 +1482,8 @@ def make_handler(runtime: BaseRuntime, *, api_key: str | None = None,
             created = int(time.time())
             try:
                 text, stats = runtime.generate_json(
-                    prompt_ids, json_schema, max_tokens=params.max_tokens)
+                    prompt_ids, json_schema, max_tokens=params.max_tokens,
+                    timeout=max(0.001, self._remaining()))
             except MemoryError as exc:
                 self._json(503, {"error": {"type": "overloaded", "message": str(exc)}})
                 return
@@ -1389,6 +1514,13 @@ def make_handler(runtime: BaseRuntime, *, api_key: str | None = None,
                         "model": model,
                         "choices": [{"index": 0, "delta": {}, "finish_reason": finish}]}
                 self._sse(done)
+                opts = body.get("stream_options") or {}
+                if isinstance(opts, dict) and opts.get("include_usage"):
+                    self._sse({"id": cid, "object": "chat.completion.chunk",
+                               "created": created, "model": model, "choices": [],
+                               "usage": {"prompt_tokens": len(prompt_ids),
+                                         "completion_tokens": int(stats.get("steps", 0)),
+                                         "total_tokens": len(prompt_ids) + int(stats.get("steps", 0))}})
                 self.wfile.write(b"data: [DONE]\n\n")
                 self.wfile.flush()
                 return
@@ -1413,27 +1545,35 @@ def make_handler(runtime: BaseRuntime, *, api_key: str | None = None,
             model = body.get("model") or "terrazzo"
             cid = f"chatcmpl-{uuid.uuid4().hex[:12]}"
             created = int(time.time())
+            request_id = body.get("request_id")
             try:
-                request_id, q = runtime.submit(prompt_ids, params,
-                                               request_id=body.get("request_id"))
+                request_id, q = self._submit(prompt_ids, params, request_id)
             except MemoryError as exc:
                 self._json(503, {"error": {"type": "overloaded", "message": str(exc)}})
+                return
+            except TimeoutError as exc:
+                self._json(504, {"error": {"type": "timeout", "message": str(exc)}})
                 return
             except Exception as exc:
                 self._json(500, {"error": {"type": "submit_failed", "message": str(exc)}})
                 return
             tokens: list[int] = []
             finish = "stop"
-            while True:
-                delta = self._norm(q.get())
-                ids = delta.get("token_ids") or []
-                if delta.get("finished") and len(ids) > 1:
-                    tokens = ids
-                else:
-                    tokens.extend(ids)
-                if delta.get("finished"):
-                    finish = delta.get("finish_reason") or "stop"
-                    break
+            try:
+                while True:
+                    delta = self._norm(self._qget(q, request_id))
+                    ids = delta.get("token_ids") or []
+                    if delta.get("finished") and len(ids) > 1:
+                        tokens = ids
+                    else:
+                        tokens.extend(ids)
+                    if delta.get("finished"):
+                        finish = delta.get("finish_reason") or "stop"
+                        break
+            except TimeoutError as exc:
+                runtime.abort(request_id)
+                self._json(504, {"error": {"type": "timeout", "message": str(exc)}})
+                return
             text = runtime.decode(tokens)
             if tools:
                 cleaned, tool_calls = parse_tool_calls(text)
@@ -1476,6 +1616,10 @@ def make_handler(runtime: BaseRuntime, *, api_key: str | None = None,
             self._sse({"id": cid, "object": "chat.completion.chunk", "created": created,
                        "model": model,
                        "choices": [{"index": 0, "delta": {}, "finish_reason": finish}]})
+            opts = body.get("stream_options") or {}
+            if isinstance(opts, dict) and opts.get("include_usage"):
+                self._sse({"id": cid, "object": "chat.completion.chunk", "created": created,
+                           "model": model, "choices": [], "usage": usage})
             self.wfile.write(b"data: [DONE]\n\n")
             self.wfile.flush()
 
@@ -1490,9 +1634,12 @@ def make_handler(runtime: BaseRuntime, *, api_key: str | None = None,
             if tools or tools_requested:
                 self._serve_tools(prompt_ids, body, params, tools or [])
                 return
+            request_id = body.get("request_id")
             try:
-                request_id, q = runtime.submit(prompt_ids, params,
-                                               request_id=body.get("request_id"))
+                request_id, q = self._submit(prompt_ids, params, request_id)
+            except TimeoutError as exc:
+                self._json(504, {"error": {"type": "timeout", "message": str(exc)}})
+                return
             except MemoryError as exc:
                 self.send_response(503)
                 self.send_header("Content-Type", "application/json")
@@ -1512,16 +1659,21 @@ def make_handler(runtime: BaseRuntime, *, api_key: str | None = None,
             if not stream:
                 tokens: list[int] = []
                 finish = None
-                while True:
-                    delta = self._norm(q.get())
-                    ids = delta.get("token_ids") or []
-                    if delta.get("finished") and len(ids) > 1:
-                        tokens = ids  # final event carries the full output
-                    else:
-                        tokens.extend(ids)
-                    if delta.get("finished"):
-                        finish = delta.get("finish_reason") or "stop"
-                        break
+                try:
+                    while True:
+                        delta = self._norm(self._qget(q, request_id))
+                        ids = delta.get("token_ids") or []
+                        if delta.get("finished") and len(ids) > 1:
+                            tokens = ids  # final event carries the full output
+                        else:
+                            tokens.extend(ids)
+                        if delta.get("finished"):
+                            finish = delta.get("finish_reason") or "stop"
+                            break
+                except TimeoutError as exc:
+                    runtime.abort(request_id)
+                    self._json(504, {"error": {"type": "timeout", "message": str(exc)}})
+                    return
                 text = runtime.decode(tokens)
                 usage = {"prompt_tokens": len(prompt_ids), "completion_tokens": len(tokens),
                          "total_tokens": len(prompt_ids) + len(tokens)}
@@ -1546,7 +1698,7 @@ def make_handler(runtime: BaseRuntime, *, api_key: str | None = None,
             printed = 0
             try:
                 while True:
-                    delta = self._norm(q.get())
+                    delta = self._norm(self._qget(q, request_id))
                     pieces = delta.get("token_ids") or []
                     for tok_id in pieces:
                         streamed_ids.append(tok_id)
@@ -1580,9 +1732,34 @@ def make_handler(runtime: BaseRuntime, *, api_key: str | None = None,
                                        "created": created, "model": model,
                                        "choices": [{"index": 0, "text": "",
                                                     "finish_reason": reason}]})
+                        opts = body.get("stream_options") or {}
+                        if isinstance(opts, dict) and opts.get("include_usage"):
+                            self._sse({
+                                "id": cid,
+                                "object": "chat.completion.chunk" if chat else "text_completion",
+                                "created": created, "model": model, "choices": [],
+                                "usage": {"prompt_tokens": len(prompt_ids),
+                                          "completion_tokens": len(streamed_ids),
+                                          "total_tokens": len(prompt_ids) + len(streamed_ids)},
+                            })
                         self.wfile.write(b"data: [DONE]\n\n")
                         self.wfile.flush()
                         break
+            except TimeoutError as exc:
+                # headers are already out: terminate the SSE stream explicitly
+                runtime.abort(request_id)
+                try:
+                    self._sse({"id": cid,
+                               "object": "chat.completion.chunk" if chat else "text_completion",
+                               "created": created, "model": model,
+                               "choices": [{"index": 0,
+                                            "delta": {} if chat else {},
+                                            "finish_reason": "error"}],
+                               "error": {"type": "timeout", "message": str(exc)}})
+                    self.wfile.write(b"data: [DONE]\n\n")
+                    self.wfile.flush()
+                except Exception:
+                    pass
             except (BrokenPipeError, ConnectionResetError):
                 # the client went away: free its KV now rather than decoding to the end
                 try:
@@ -1591,6 +1768,45 @@ def make_handler(runtime: BaseRuntime, *, api_key: str | None = None,
                     pass
 
     return Handler
+
+
+class BoundedThreadingHTTPServer(ThreadingHTTPServer):
+    """ThreadingHTTPServer with a cap: excess connections get an immediate 503.
+
+    Unbounded threads are a trivial DoS on a shared machine: a slow client (or a
+    slow generation) can pile up threads. The limit is enforced before the request
+    is parsed; queued inference work has its own cap in the runtime.
+    """
+
+    daemon_threads = True
+
+    def __init__(self, server_address, handler_class, *, max_concurrent: int = 64):
+        super().__init__(server_address, handler_class)
+        self._slots = threading.BoundedSemaphore(max_concurrent)
+        self.max_concurrent = max_concurrent
+
+    def process_request(self, request, client_address):
+        if not self._slots.acquire(blocking=False):
+            body = json.dumps({"error": {"type": "overloaded",
+                                         "message": "too many concurrent requests"}}).encode()
+            try:
+                request.sendall(
+                    b"HTTP/1.1 503 Service Unavailable\r\n"
+                    b"Content-Type: application/json\r\nRetry-After: 1\r\n"
+                    b"Content-Length: " + str(len(body)).encode() + b"\r\n"
+                    b"Connection: close\r\n\r\n" + body)
+            except OSError:
+                pass
+            finally:
+                self.shutdown_request(request)
+            return
+        super().process_request(request, client_address)
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._slots.release()
 
 
 def serve(cfg: EngineConfig, host: str = "127.0.0.1", port: int = 8080,
@@ -1624,8 +1840,15 @@ def serve(cfg: EngineConfig, host: str = "127.0.0.1", port: int = 8080,
     runtime.default_params = default_params
     if no_thinking:
         runtime.template_kwargs = {"enable_thinking": False}
-    httpd = ThreadingHTTPServer((host, port), make_handler(
-        runtime, api_key=api_key, rate_limit_rps=rate_limit_rps))
+    max_concurrent = int(os.environ.get("TERRAZZO_MAX_CONCURRENT", "64"))
+    request_timeout_s = float(os.environ.get("TERRAZZO_REQUEST_TIMEOUT_S", "600"))
+    max_body_bytes = int(float(os.environ.get("TERRAZZO_MAX_BODY_MB", "1")) * (1 << 20))
+    httpd = BoundedThreadingHTTPServer(
+        (host, port),
+        make_handler(runtime, api_key=api_key, rate_limit_rps=rate_limit_rps,
+                     request_timeout_s=request_timeout_s,
+                     max_body_bytes=max_body_bytes),
+        max_concurrent=max_concurrent)
     print(f"[terrazzo] runtime={runtime.name} model={cfg.model}"
           + (" metal=on" if getattr(runtime, "use_metal", False) else ""), flush=True)
     if system_text:
@@ -1633,7 +1856,9 @@ def serve(cfg: EngineConfig, host: str = "127.0.0.1", port: int = 8080,
         print(f"[terrazzo] system prefix registered: {n} tokens", flush=True)
     print(f"[terrazzo] listening on http://{host}:{port}  (OpenAI compatible)"
           + ("  auth=on" if api_key else "") + (f"  rate_limit={rate_limit_rps}/s"
-                                               if rate_limit_rps else ""), flush=True)
+                                               if rate_limit_rps else "")
+          + f"  max_concurrent={max_concurrent}"
+          + f"  request_timeout={request_timeout_s:.0f}s", flush=True)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

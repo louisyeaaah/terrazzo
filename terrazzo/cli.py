@@ -9,7 +9,6 @@ import sys
 import time
 import unittest
 
-from .engine import Engine, EngineConfig
 from .sequence import SamplingParams
 
 
@@ -61,7 +60,9 @@ def _auto_prefix_budget() -> tuple[int, int]:
     return 4096, 1 << 30
 
 
-def _cfg(args) -> EngineConfig:
+def _cfg(args):
+    from .engine import EngineConfig
+
     max_tokens, budget = _auto_prefix_budget()
     return EngineConfig(
         model=_resolve_model(args.model),
@@ -81,6 +82,7 @@ def _cfg(args) -> EngineConfig:
 
 
 def cmd_generate(args) -> int:
+    from .engine import Engine
     engine = Engine(_cfg(args))
     params = SamplingParams(max_tokens=args.max_tokens, temperature=args.temperature,
                             top_p=args.top_p, top_k=args.top_k)
@@ -140,7 +142,8 @@ def cmd_generate(args) -> int:
 
 
 def cmd_chat(args) -> int:
-    """Interactive terminal chatbot (multi-turn, streamed), ollama-run style."""
+    """
+    from .engine import EngineInteractive terminal chatbot (multi-turn, streamed), ollama-run style."""
     import queue as _queue
 
     print("[terrazzo] loading model...", flush=True)
@@ -287,6 +290,7 @@ def cmd_chat(args) -> int:
     return 0
 
 def cmd_bench(args) -> int:
+    from .engine import Engine
     engine = Engine(_cfg(args))
     params = SamplingParams(max_tokens=args.max_tokens, temperature=0.0)
     prompt = args.prompt if args.prompt else open(args.prompt_file).read()
@@ -471,7 +475,8 @@ def _stream_run(engine, prompt_ids: list[int], params, stop: list[str],
 
 
 def cmd_run(args) -> int:
-    """`ollama run MODEL [PROMPT]`: one-shot when a prompt is given, chat otherwise."""
+    """
+    from .engine import Engine`ollama run MODEL [PROMPT]`: one-shot when a prompt is given, chat otherwise."""
     model = getattr(args, "run_model", None) or args.model
     args.model = model
     try:

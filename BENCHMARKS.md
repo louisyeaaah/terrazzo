@@ -1783,6 +1783,7 @@ MMA 只在 **大 q_len prefill** 有意义，而那里我们测过它比 SDPA �
 
 **最终复测（2026-10-27 01:26，load 3.6，prewarm API + `--profile agent`，16 会话）**：
 **TTFT p50 2.26 s / p95 2.87 s、聚合 95.8 tok/s、min 0.79 s**。
+（该行使用旧的 "每个 SSE 内容块 +1" 计数口径和固定假回答；见 §46 的修正复测，以 §46 为准。）
 - p95 达标（≤3 s）；**p50 差 13%**（2.26 vs ≤2 s）。根因已定位：mlx-lm 的批处理把共享前缀
   **复制进每个序列**（16 × 366 MB ≈ 5.9 GB 的 merge 拷贝），拷贝带宽决定了 TTFT 下限；
   彻底消除需要 paged 共享（阶段 A 已证伪其 attention 路径）。
@@ -1791,6 +1792,63 @@ MMA 只在 **大 q_len prefill** 有意义，而那里我们测过它比 SDPA �
 
 **下一步**：把 prewarm 做成服务端 API（`POST /v1/prewarm`）与 CLI，让 agent 服务启动即注册系统提示；
 把 `--profile agent` 写进快速开始；然后进入产品化（模型管理 CLI、/api/tags 等）。
+
+## 46. 可靠性修复（代码 review 驱动，2026-10-27）
+
+review 指出的五个问题，逐项处理与证据：
+
+### 46.1 token 计数口径（已修，数字重测）
+
+旧 `bench/agent_workload.py` 对每个非空 SSE 内容块 `+1`。块 ≠ token（服务端可以合并字符），
+因此旧数字不能当严格 token/s。现在：
+
+- 服务端支持 OpenAI `stream_options.include_usage`，流式响应末尾发 `usage.completion_tokens`；
+- bench 优先用 `usage`，缺失时回退块计数并标记 `token_source="chunks(approx)"`；
+- 每轮把真实 assistant 回答喂回下一轮（不再用固定假回答）；输出 JSON 带完整环境信息
+  （host / Python / git commit / 后端版本 / loadavg / `/stats` 前后快照）；
+- 与 `/stats.decode_tokens` 交叉校验：本轮 2048 vs 2048，完全一致。
+
+**修正口径复测**（16 会话 × 2 轮 × 64 token，2000-token 共享系统提示，prewarm + `--profile agent`，
+load 4.0）：**TTFT p50 2.284 s / p95 3.441 s、聚合 87.5 tok/s（server decode_tokens=2048）、墙钟 23.4 s**。
+p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §44 的 95.8 tok/s 不再作为权威数字。
+
+### 46.2 超时与故障闭环
+
+- `EngineRuntime.submit`：等待 worker 准入有超时；超时后从 pending 队列移除并 abort，抛 `TimeoutError`；
+  pending 数超过 `TERRAZZO_MAX_PENDING`（默认 256）直接拒绝。
+- 所有 handler 的 `q.get()` 统一带请求 deadline（默认 600 s，`TERRAZZO_REQUEST_TIMEOUT_S`）：
+  非流式返回 504；流式发 `finish_reason="error"` 帧后关闭，并 abort 后端请求。
+- worker `step()` 抛 `RuntimeError`：`Engine.handle_failure()` 给所有在途请求发终止事件、清 pending；
+  连续 3 次失败后新请求返回 503，避免坏状态继续吃请求。
+- 故障注入测试：卡死 worker（504/错误帧）、`Engine.handle_failure` 终止在途队列、submit 超时、
+  pending 满拒绝。
+
+### 46.3 HTTP 资源限制
+
+- 鉴权在读取 body **之前**执行；body 上限 1 MB（`TERRAZZO_MAX_BODY_MB`，413）；
+- 单请求 socket 读超时 30 s（slowloris）；
+- 线程并发上限 64（`TERRAZZO_MAX_CONCURRENT`），超出立即 503；
+- 排队上限 `TERRAZZO_MAX_PENDING`（默认 256）；
+- 测试：超大 body 413、未鉴权大 body 先 401、并发占满 503、空闲后恢复 200。
+
+### 46.4 纯 Python 测试与 CI
+
+- `terrazzo/__init__.py` 改为 `__getattr__` 延迟导入；server/cli 在用到时再导入 engine。
+  `import terrazzo`、scheduler/blocks/前缀缓存逻辑、HTTP 层（fake runtime）、CLI 均不需要 MLX。
+- `scripts/ci_core_tests.py` 在 MLX 被 blocked 的情况下跑 118 个测试（8 skipped），
+  `TERRAZZO_CI_ALLOW_MLX=1` 时同一套在 MLX 环境跑（6 skipped）。
+- `.github/workflows/ci.yml`：Linux job（纯 Python，MLX blocked）+ macOS-14 job
+  （pip install 固定依赖、import MLX、MLX 可用下的核心套件、MLX 依赖单元测试）。
+
+### 46.5 依赖可复现
+
+- `pyproject.toml`：`mlx>=0.32.4,<0.33`、`mlx-lm>=0.31.3,<0.32`；`constraints.txt` 固定
+  `mlx==0.32.4` / `mlx-lm==0.31.3`（benchmark 与测试的实际版本）。
+- `terrazzo.compat.require_tested_mlx_lm()` 在引擎启动时校验 mlx-lm 版本与 patch 依赖的
+  cache 方法是否存在，失败给出明确错误；`TERRAZZO_SKIP_MLX_LM_CHECK=1` 仅用于试验新版本。
+- `docs/COMPATIBILITY.md` 记录测试矩阵与不支持的平台。
+
+**当前测试**：核心 215 个（1 skipped）+ 实验内核 31 个；CI 两个 job（见 workflow）。
 
 ## 45. Tools / function calling（2026-10-27）
 
@@ -1816,4 +1874,4 @@ MMA 只在 **大 q_len prefill** 有意义，而那里我们测过它比 SDPA �
 
 关键修复：带 tools 时默认 `enable_thinking=false`（原来 `<think>` 把 token 预算吃光，
 128 token 内根本到不了 `<tool_call>`）；OpenAI 报文中 assistant `content:null` 需规范化为空串，
-否则 Jinja 模板抛 `'NoneType' is not iterable`。全套 **200 个核心测试 OK（1 skipped）+ 31 个实验内核测试**。
+否则 Jinja 模板抛 `'NoneType' is not iterable`。全套 **215 个核心测试 OK（1 skipped）+ 31 个实验内核测试**（§46 后）。

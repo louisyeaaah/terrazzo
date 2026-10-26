@@ -43,6 +43,23 @@ Watch these `/stats` fields:
 - If `preemptions` grows quickly, either lower `--max-num-seqs` or raise
   `--num-gpu-blocks` (or use `0` to derive from RAM).
 
+## Limits and timeouts
+
+Defaults are deliberately conservative; override with environment variables:
+
+| Variable | Default | Behaviour |
+|---|---|---|
+| `TERRAZZO_REQUEST_TIMEOUT_S` | 600 | per-request deadline (queue + generation). Non-stream: `504`; stream: `finish_reason="error"` then close |
+| `TERRAZZO_MAX_BODY_MB` | 1 | request body cap; larger requests get `413` before JSON parsing |
+| `TERRAZZO_MAX_CONCURRENT` | 64 | HTTP worker cap; excess connections get an immediate `503` + `Retry-After: 1` |
+| `TERRAZZO_MAX_PENDING` | 256 | inference queue cap; excess submissions get `503` |
+| `TERRAZZO_MEMORY_CAP_MB` | 70% RAM | memory guard (existing) |
+
+Auth is checked before the request body is read. A request that hits the deadline is
+aborted in the engine so it does not keep occupying KV. After three consecutive
+`step()` failures the runtime refuses new work (`503`) until the server is restarted;
+watch the server log for `[engine] step failed` lines.
+
 ## Cancellation
 
 - `POST /v1/abort {"request_id": "..."}` — clients may pass their own `request_id`
