@@ -178,5 +178,7 @@ class BlockManager:
             "free": self.num_free_blocks,
             "usage": round(self.usage, 4),
             "peak_usage": round(self.peak_usage, 4),
+            "peak_used": self._peak_used,
+            "peak_kv_tokens": self._peak_used * self.block_size,
             "cached_hashes": len(self.hash_to_block),
         }

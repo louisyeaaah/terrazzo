@@ -220,6 +220,11 @@ prefill chunking is independent of `SchedulerConfig`. `max_tokens` is the output
 not a step budget, and `insert_segments` is not a dynamic chunk controller.
 
 Phase 1 therefore only tests the controllable mechanism: cache-hit-aware admission order.
-The result is a narrow but reproducible mixed-traffic p95 improvement; it is documented,
-with negative results and the control boundary, in [docs/CO-DESIGN.md](docs/CO-DESIGN.md)
-and BENCHMARKS §49. The project does not claim full algorithm–system co-optimization yet.
+A first mixed-traffic result showed p95 and memory gains over uncapped FIFO, but a Phase-2
+control (cache + FIFO with `--max-num-seqs 4`) beat cost ordering on throughput, p95 and
+memory in both burst and continuous-arrival workloads. The peak KV block count of FIFO-16
+and cost-ordering was identical, so the memory difference is transient prefill/copy
+pressure rather than fewer live KV blocks. The correct description is a limited
+cache/admission-scheduling experiment, not an algorithm–system co-optimization; details,
+negative results and the unresolved 16×2 hang are in
+[docs/CO-DESIGN.md](docs/CO-DESIGN.md) and BENCHMARKS §49–50.

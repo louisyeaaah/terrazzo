@@ -86,6 +86,8 @@ class Scheduler:
         self.num_preemptions = 0
         self.num_admitted = 0
         self.num_steps = 0
+        self.peak_running = 0
+        self.peak_waiting = 0
 
     # ---------------------------------------------------------------- requests
     def add(self, seq: Sequence) -> None:
@@ -210,6 +212,8 @@ class Scheduler:
 
         out.block_usage = self.block_manager.usage
         out.free_blocks = self.block_manager.num_free_blocks
+        self.peak_running = max(self.peak_running, len(self.running))
+        self.peak_waiting = max(self.peak_waiting, len(self.waiting))
         return out
 
     # ------------------------------------------------------------------ blocks
@@ -280,5 +284,7 @@ class Scheduler:
             "running": len(self.running),
             "admitted": self.num_admitted,
             "preemptions": self.num_preemptions,
+            "peak_running": self.peak_running,
+            "peak_waiting": self.peak_waiting,
             **self.block_manager.snapshot(),
         }

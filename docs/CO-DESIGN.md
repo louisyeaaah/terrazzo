@@ -198,3 +198,75 @@ python bench/co_design_ablation.py --mlx-model "$MODEL" \
 Raw JSON is written to `bench/co_design_results.json` by default (override with `--out`).
 The harness sets `TERRAZZO_ADMIT_SETTLE_MS=50` for Terrazzo arms so the admission wave
 contains all sessions before the scheduler sorts it.
+
+---
+
+## 9. Phase 2: concurrency-cap baseline and continuous arrivals
+
+The Phase-1 result had an obvious alternative explanation: cost ordering may simply reduce
+the effective number of simultaneously active large-prefill requests. I therefore added a
+**cache+FIFO + concurrency cap** baseline (`--max-num-seqs` 4/8/12) and repeated the mixed
+16-session comparison, then ran a continuous-arrival version (500 ms stagger between
+session starts).
+
+### 9.1 Mixed 16×1 with FIFO concurrency caps
+
+| arm | tok/s | TTFT p50 | TTFT p95 | p95 total | slowest | peak MLX | peak KV tokens | peak running |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| B-cap4 (FIFO, 4 slots) | **14.5** | **32.45 s** | **67.44 s** | **70.74 s** | **70.74 s** | **18.5 GB** | 25,904 | 4 |
+| B-cap8 (FIFO, 8 slots) | 11.9 | 54.74 s | 76.02 s | 85.59 s | 85.72 s | 24.0 GB | 36,080 | 8 |
+| B-cap12 (FIFO, 12 slots) | 12.2 | 47.35 s | 79.33 s | 83.62 s | 83.62 s | 34.5 GB | 34,464 | 12 |
+| B cache+FIFO (16 slots) | 11.6 | 40.89 s | 77.51 s | 88.10 s | 88.20 s | 30.3 GB | 44,784 | 16 |
+| D cache+cost (16 slots) | 12.6 | 40.98 s | 71.76 s | 81.11 s | 81.11 s | 19.5 GB | 44,784 | 16 |
+
+**A simple FIFO cap at 4 beats cost ordering on every metric here**: throughput 14.5 vs
+12.6 tok/s, p95 TTFT 67.4 vs 71.8 s, p95 completion 70.7 vs 81.1 s, peak memory 18.5 vs
+19.5 GB. D still beats uncapped FIFO, but the cap baseline explains that improvement
+without a cost model.
+
+Note the KV peak: B and D both peak at 44,784 tokens, while cap4 peaks at 25,904. D's
+lower MLX memory therefore cannot be explained by fewer live KV blocks; it is more likely
+transient prefill/copy buffers. Cap4 reduces both KV residency and transient memory.
+
+### 9.2 Continuous arrivals (mixed, 16 sessions, 500 ms stagger)
+
+| arm | tok/s | TTFT p95 | p95 total | slowest | peak MLX | peak KV | shared p50 | unique p50 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| B cache+FIFO | 11.2 | 73.25 s | 87.90 s | 88.02 s | 40.9 GB | 44,544 | 40.33 s | 70.08 s |
+| D cache+cost | 12.8 | 63.99 s | 78.13 s | 78.16 s | 21.1 GB | 44,576 | **14.71 s** | 58.78 s |
+| B-cap4 | **13.3** | **60.39 s** | **69.39 s** | **70.03 s** | **18.2 GB** | 28,368 | 34.95 s | **45.02 s** |
+
+D improves both shared and unique groups over uncapped FIFO, but **cap4 is again better on
+throughput, p95 and peak memory**. The D-vs-cap4 gap is not explained by the 50 ms settle
+window (both Terrazzo arms share it) or by different prompts (same workload generator).
+
+### 9.3 Causal chain, as far as the evidence goes
+
+1. Cache-hit information changes admission order: with the cost arm the first prefill wave
+   contained cached requests (`cached=2544, uncached=31`), while FIFO admitted a mix.
+2. That changes the mix of active work (small-suffix requests first), which lowers transient
+   prefill/copy memory; MLX peak drops even though the peak KV block count is identical to B.
+3. **But the same memory/latency effect is obtained more simply by capping FIFO concurrency
+   at 4.** So the current evidence supports "ordering can act as a soft concurrency
+   control", not "cost ordering has unique value."
+
+### 9.4 Hang investigation
+
+The earlier 16×2 shared-prefix hang (process alive, `/health` unresponsive) was **not
+reproduced** in four dedicated runs: each completed in 21.7–22.4 s at ~94 tok/s, peak MLX
+9.83 GB. The failure occurred only inside a multi-arm sequence; no stack was captured at
+the time, so the layer (HTTP loop, lock, worker, MLX call, cache release) remains unknown.
+This is now documented as an open reliability question, not as a solved issue. Adding a
+monitor that samples thread stacks (`sample <pid>`) on health failure is part of the
+harness/repro notes; a full multi-arm 2-turn retry is still pending.
+
+### 9.5 Revised decision
+
+- The right description is **"a cache/admission-scheduling joint experiment"**, not a
+  co-optimized engine.
+- Cost ordering has **not shown value beyond a simple FIFO concurrency cap** on the
+  measured workloads; the cap baseline should be the default comparison in any future
+  claim.
+- Do not pursue physical sharing or a custom executor from this evidence. If work
+  continues, start from concurrency/cache-budget tuning and only add cache-aware ordering
+  if it beats a tuned FIFO cap on multiple workloads and arrival patterns.

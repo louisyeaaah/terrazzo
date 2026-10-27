@@ -123,6 +123,15 @@ ARMS = {
           "flags": ["--no-prefix-cache", "--scheduler-policy", "cost"], "prewarm": False},
     "d": {"label": "D: cache + cost-aware",
           "flags": ["--prefix-reuse", "auto", "--scheduler-policy", "cost"], "prewarm": True},
+    "b_cap4": {"label": "B-cap4: cache+FIFO, 4 slots", "profile": "default",
+               "flags": ["--prefix-reuse", "always", "--scheduler-policy", "fifo",
+                         "--max-num-seqs", "4"], "prewarm": True},
+    "b_cap8": {"label": "B-cap8: cache+FIFO, 8 slots", "profile": "default",
+               "flags": ["--prefix-reuse", "always", "--scheduler-policy", "fifo",
+                         "--max-num-seqs", "8"], "prewarm": True},
+    "b_cap12": {"label": "B-cap12: cache+FIFO, 12 slots", "profile": "default",
+                "flags": ["--prefix-reuse", "always", "--scheduler-policy", "fifo",
+                          "--max-num-seqs", "12"], "prewarm": True},
     "d_fixed": {"label": "D-fixed: cost, frozen estimates",
                 "flags": ["--prefix-reuse", "auto", "--scheduler-policy", "cost",
                           "--no-cost-calibration"], "prewarm": True},
@@ -150,7 +159,7 @@ def start_server(arm: str, model: str, port: int, system_text: str | None,
     else:
         cmd = [PY, "-m", "terrazzo", "serve", "--model", model,
                "--host", "127.0.0.1", "--port", str(port),
-               "--profile", "agent", "--no-thinking"]
+               "--profile", spec.get("profile", "agent"), "--no-thinking"]
         cmd += list(spec["flags"])
         ready = f"http://127.0.0.1:{port}/health"
         env = os.environ.copy()
@@ -218,16 +227,23 @@ def build_systems(kind: str, sessions: int, system_tokens: int) -> tuple[list[st
     raise ValueError(kind)
 
 
-def run_workload(srv: dict, systems: list[str], turns: int, max_tokens: int) -> dict:
+def run_workload(srv: dict, systems: list[str], turns: int, max_tokens: int,
+                 stagger_ms: float = 0.0) -> dict:
     sessions = len(systems)
-    barrier = threading.Barrier(sessions)
+    if stagger_ms <= 0:
+        barrier = threading.Barrier(sessions)
+    else:
+        barrier = None
     rows: list[dict] = []
     lock = threading.Lock()
     errors: "queue.Queue[str]" = queue.Queue()
 
     def one(i: int) -> None:
         messages = [{"role": "system", "content": systems[i]}]
-        barrier.wait()
+        if barrier is not None:
+            barrier.wait()
+        else:
+            time.sleep(i * stagger_ms / 1000.0)
         for turn in range(turns):
             messages.append({"role": "user",
                              "content": f"Turn {turn + 1}: summarize the key points."})
@@ -236,7 +252,8 @@ def run_workload(srv: dict, systems: list[str], turns: int, max_tokens: int) -> 
             except Exception as exc:  # keep other sessions running
                 errors.put(f"session {i} turn {turn}: {exc}")
                 return
-            r.update({"session": i, "turn": turn})
+            r.update({"session": i, "turn": turn,
+                      "group": "shared" if systems[i] == systems[0] else "unique"})
             with lock:
                 rows.append(r)
             # feed a short real answer back so later turns share only the system prefix
@@ -254,8 +271,10 @@ def run_workload(srv: dict, systems: list[str], turns: int, max_tokens: int) -> 
     ttfts = sorted(r["ttft_s"] for r in rows)
     totals = sorted(r["total_s"] for r in rows)
     by_session: dict[int, float] = {}
+    by_group: dict[str, list[dict]] = {}
     for r in rows:
         by_session[r["session"]] = by_session.get(r["session"], 0.0) + r["total_s"]
+        by_group.setdefault(r.get("group", "shared"), []).append(r)
 
     def pct(xs: list[float], p: float) -> float:
         if not xs:
@@ -285,6 +304,20 @@ def run_workload(srv: dict, systems: list[str], turns: int, max_tokens: int) -> 
         "prefix_cache": stats1.get("prefix_cache"),
         "cost_model": stats1.get("cost_model"),
         "scheduler_policy": stats1.get("scheduler_policy"),
+        "peak_running": stats1.get("peak_running"),
+        "peak_waiting": stats1.get("peak_waiting"),
+        "peak_kv_tokens": stats1.get("peak_kv_tokens"),
+        "peak_used_blocks": stats1.get("peak_used"),
+        "groups": {
+            g: {
+                "requests": len(rs),
+                "ttft_p50_s": round(pct(sorted(x["ttft_s"] for x in rs), 0.50), 3),
+                "ttft_p95_s": round(pct(sorted(x["ttft_s"] for x in rs), 0.95), 3),
+                "total_p95_s": round(pct(sorted(x["total_s"] for x in rs), 0.95), 3),
+                "total_max_s": round(max(x["total_s"] for x in rs), 3),
+            } for g, rs in by_group.items()
+        },
+        "stagger_ms": stagger_ms,
         "execution_control": stats1.get("execution_control"),
         "rows": rows,
     }
@@ -303,6 +336,8 @@ def main() -> int:
     ap.add_argument("--system-tokens", type=int, default=2000)
     ap.add_argument("--long-system-tokens", type=int, default=8000)
     ap.add_argument("--port-base", type=int, default=8930)
+    ap.add_argument("--stagger-ms", type=float, default=0.0,
+                    help="spread session starts by i*stagger_ms (0 = burst arrival)")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
@@ -333,7 +368,8 @@ def main() -> int:
                   f"turns={turns} system_tokens~{system_tokens}", flush=True)
             srv = start_server(arm, model, port, shared_system, log_path)
             try:
-                summary = run_workload(srv, systems, turns, args.max_tokens)
+                summary = run_workload(srv, systems, turns, args.max_tokens,
+                                       stagger_ms=args.stagger_ms)
             finally:
                 stop_server(srv)
             summary.update({"workload": workload, "arm": arm,
@@ -362,12 +398,13 @@ def main() -> int:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=1))
     print(f"\nwrote {out_path}")
-    print("\n| workload | arm | sessions | tok/s | TTFT p50 | TTFT p95 | p95 total | slowest | peak MLX MB | prewarm s |")
-    print("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|")
+    print("\n| workload | arm | sessions | tok/s | TTFT p50 | TTFT p95 | p95 total | slowest | peak MLX MB | peak KV tok | peak run | prewarm s |")
+    print("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
     for r in results:
         print(f"| {r['workload']} | {r['arm_label']} | {r['sessions']} | {r['aggregate_tok_s']} | "
               f"{r['ttft_p50_s']} | {r['ttft_p95_s']} | {r['total_p95_s']} | "
-              f"{r['slowest_session_s']} | {r['mlx_peak_mb']} | {r['prewarm_s']} |")
+              f"{r['slowest_session_s']} | {r['mlx_peak_mb']} | {r['peak_kv_tokens']} | "
+              f"{r['peak_running']} | {r['prewarm_s']} |")
     return 0
 
 

@@ -122,23 +122,27 @@ Earlier table rows (e.g. 2.08× decode) came from loaded-machine runs and are su
 
 ### Co-design status (2026-10-27)
 
-I also tested the one mechanism that could connect the cache and the scheduler without
-writing a kernel: **cache-hit-aware admission ordering** (order requests by predicted
-uncached work + predicted new KV bytes, instead of FIFO). It is a real but narrow result:
+I tested one mechanism that connects the cache and the scheduler without writing a kernel:
+**cache-hit-aware admission ordering** (predicted uncached work + predicted new KV bytes,
+instead of FIFO). It is a limited cache/admission-scheduling experiment, not full-stack
+co-optimization. The honest summary:
 
-- Mixed 16-session traffic (8 shared-prefix + 8 unique-prefix sessions): p95 TTFT 57–70 s
-  vs 74–81 s for cache+FIFO, peak MLX memory 18–20 GB vs 34.5 GB, throughput +13–33%.
-- Shared-prefix-only traffic: no difference (equal predicted cost).
-- 8 sessions × 2 turns: no difference.
-- Long 8k prompts: prefix caching dominates; ordering adds nothing.
+- Mixed 16-session traffic, single turn: cost ordering beat uncapped FIFO (p95 TTFT
+  57–70 s vs 74–81 s; peak memory 18–20 GB vs 30–41 GB).
+- **But a plain FIFO concurrency cap at 4 slots did better still**: 14.5 vs 12.6 tok/s,
+  p95 TTFT 67.4 vs 71.8 s, peak 18.5 vs 19.5 GB. Continuous arrivals showed the same
+  ordering: cap4 best, cost ordering second, uncapped FIFO last.
+- Peak KV block count was identical between FIFO-16 and cost-ordering (44,784 tokens):
+  the memory difference is transient prefill/copy pressure, not fewer live KV blocks.
+- Shared-only traffic, 8 sessions × 2 turns and 8k prompts showed no ordering benefit;
+  prefix caching itself remains the dominant lever.
 
-The scheduler still cannot control the executor's prefill budget: on 16 shared sessions it
-scheduled 16.4k prompt tokens while mlx-lm's `BatchGenerator` processed 41.2k (2.5×).
-So this is **not** claimed as an algorithm–system co-design breakthrough; it is a
-cache-aware admission-order experiment with a measured control boundary. Full protocol,
-per-run numbers and caveats: [docs/CO-DESIGN.md](docs/CO-DESIGN.md).
-A 16-session × 2-turn run also hung once (health endpoint stopped responding); that is
-unresolved and not hidden.
+The scheduler still cannot control the executor's prefill budget (16.4k scheduled vs 41.2k
+actual prompt tokens, 2.5×), so the only controllable mechanism is admission/order.
+**Conclusion: the right label is "cache/admission-scheduling joint experiment", not
+"co-optimized engine"; cost ordering has not yet shown value beyond a tuned FIFO cap.**
+Full protocol, cap scan, continuous-arrival numbers and the unresolved 16×2 hang:
+[docs/CO-DESIGN.md](docs/CO-DESIGN.md).
 
 ## Quickstart
 
