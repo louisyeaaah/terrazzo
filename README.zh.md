@@ -1,8 +1,9 @@
 # Terrazzo
 
 [![CI](https://github.com/louisyeaaah/terrazzo/actions/workflows/ci.yml/badge.svg)](https://github.com/louisyeaaah/terrazzo/actions/workflows/ci.yml)
+[![Website](https://img.shields.io/badge/website-louisyeaaah.github.io%2Fterrazzo-e2725b)](https://louisyeaaah.github.io/terrazzo/zh.html)
 
-**Apple Silicon 上的本地 LLM 推理服务。** · [English](README.md)
+**Apple Silicon 上的本地 LLM 推理服务。** · [项目主页](https://louisyeaaah.github.io/terrazzo/zh.html) · [English](README.md)
 
 Terrazzo 是面向 macOS / Apple Silicon 的推理运行时与服务端，基于
 [MLX](https://github.com/ml-explore/mlx) 和 `mlx-lm`。它把 **DeepInfer**（集群级 C++/CUDA

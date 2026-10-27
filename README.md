@@ -1,8 +1,9 @@
 # Terrazzo
 
 [![CI](https://github.com/louisyeaaah/terrazzo/actions/workflows/ci.yml/badge.svg)](https://github.com/louisyeaaah/terrazzo/actions/workflows/ci.yml)
+[![Website](https://img.shields.io/badge/website-louisyeaaah.github.io%2Fterrazzo-e2725b)](https://louisyeaaah.github.io/terrazzo/)
 
-**Local LLM inference for Apple Silicon.** · [简体中文](README.zh.md)
+**Local LLM inference for Apple Silicon.** · [Project page](https://louisyeaaah.github.io/terrazzo/) · [简体中文](README.zh.md)
 
 Terrazzo is an inference runtime and server for macOS / Apple Silicon, built on
 [MLX](https://github.com/ml-explore/mlx) and `mlx-lm`. It ports the scheduler and
@@ -229,6 +230,7 @@ Benchmark numbers, dependency pins and the tested matrix are documented in
 - [docs/COMPARISON.en.md](docs/COMPARISON.en.md) · [简体中文](docs/COMPARISON.zh.md) — vs Ollama / vLLM, decision matrix
 - [BENCHMARKS.md](BENCHMARKS.md) — all benchmark data and negative results
 - [DESIGN.md](DESIGN.md) — what is ported and why
+- [Project page](https://louisyeaaah.github.io/terrazzo/) — measured results, honest positioning and quick start (also [中文](https://louisyeaaah.github.io/terrazzo/zh.html))
 - [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) — pinned/tested MLX versions and the runtime-patch contract
 - [MAC-TURBO.md](MAC-TURBO.md) — MacTurbo: predicting reachable tok/s before serving
 

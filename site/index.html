@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Terrazzo — local LLM inference for Apple Silicon</title>
+<meta name="description" content="Terrazzo is a local LLM inference runtime and server for Apple Silicon: paged-KV scheduling, continuous batching, pre-registered prefix caching, OpenAI and Ollama compatible APIs.">
+<meta property="og:title" content="Terrazzo — local LLM inference for Apple Silicon">
+<meta property="og:description" content="Paged-KV scheduling on MLX, agent-oriented prefix pre-registration, OpenAI + Ollama APIs. Measured numbers, honest caveats.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://louisyeaaah.github.io/terrazzo/">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="index.html" aria-label="Terrazzo home">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><rect x="10" y="10" width="20" height="20" rx="4" fill="#e2725b"/><rect x="34" y="10" width="20" height="20" rx="4" fill="#4fd1c5"/><rect x="10" y="34" width="20" height="20" rx="4" fill="#f4e9d8"/><rect x="34" y="34" width="20" height="20" rx="4" fill="#7aa7ff"/></svg>
+      terrazzo
+    </a>
+    <nav class="site-nav" aria-label="Main">
+      <a href="#numbers">Numbers</a>
+      <a href="#bench">Benchmarks</a>
+      <a href="#long">Prefix cache</a>
+      <a href="#positioning">Positioning</a>
+      <a href="#features">Features</a>
+      <a href="#start">Quick start</a>
+      <a class="pill" href="zh.html" lang="zh-Hans" hreflang="zh-Hans">中文</a>
+      <a class="pill ghost" href="https://github.com/louisyeaaah/terrazzo">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="wrap">
+      <p class="eyebrow">Apple Silicon · MLX · local inference server</p>
+      <h1 id="hero-title">Local LLM inference<br><span class="grad">built like a real engine.</span></h1>
+      <p class="lede">
+        Terrazzo ports DeepInfer's paged-KV scheduler to a single Mac, then wraps it in
+        OpenAI- and Ollama-compatible APIs — with pre-registered shared-prefix caching
+        for the long system prompts that real agent traffic has.
+      </p>
+      <div class="hero-actions">
+        <a class="btn primary" href="#start">Get started</a>
+        <a class="btn secondary" href="#bench">See the numbers</a>
+        <a class="btn secondary" href="https://github.com/louisyeaaah/terrazzo/blob/main/README.md">Read the docs</a>
+      </div>
+      <div class="badges">
+        <a href="https://github.com/louisyeaaah/terrazzo/actions/workflows/ci.yml"><img src="https://github.com/louisyeaaah/terrazzo/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+        <span class="tag">Python 3.10</span>
+        <span class="tag">MLX 0.32.4</span>
+        <span class="tag">mlx-lm 0.31.3</span>
+        <span class="tag">macOS 14+</span>
+        <span class="tag">Apache-2.0</span>
+      </div>
+    </div>
+  </section>
+
+  <section id="numbers" aria-labelledby="numbers-title">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="numbers-title">Numbers first</h2>
+        <span class="note">Apple M1 Max · 64 GB · measured 2026-10-27</span>
+      </div>
+      <p class="section-sub">
+        One machine, one model, one service at a time. Token counts come from the server
+        (OpenAI <code>usage</code> / Ollama <code>eval_count</code>), not from stream chunk counting.
+      </p>
+      <div class="stats">
+        <div class="stat" style="--accent: var(--teal)">
+          <div class="k">101.1 <small>tok/s</small></div>
+          <div class="l">decode, short prompt</div>
+          <div class="x">1.51× Ollama (67.0)</div>
+        </div>
+        <div class="stat" style="--accent: var(--terra)">
+          <div class="k">0.343 <small>s</small></div>
+          <div class="l">first token, 8k prompt, pre-registered</div>
+          <div class="x">51× vs Ollama cold (17.6 s)</div>
+        </div>
+        <div class="stat" style="--accent: var(--blue)">
+          <div class="k">88.7 <small>tok/s</small></div>
+          <div class="l">16 concurrent agent sessions</div>
+          <div class="x">2.2× Ollama (40.6)</div>
+        </div>
+        <div class="stat" style="--accent: var(--green)">
+          <div class="k">226 <small>+ 31 tests</small></div>
+          <div class="l">core + experimental kernels</div>
+          <div class="x">CI green · 129 pure-Python</div>
+        </div>
+      </div>
+      <div class="callout">
+        <b>Same model, different quantization:</b> Terrazzo serves
+        <span class="mono">Qwen3-4B-4bit</span> (MLX 4-bit); the Ollama baseline is
+        <span class="mono">qwen3:4b</span> (GGUF Q4_K_M). Absolute numbers move with machine load;
+        the raw rows and environment metadata are in
+        <a href="https://github.com/louisyeaaah/terrazzo/blob/main/BENCHMARKS.md">BENCHMARKS §48</a>.
+      </div>
+    </div>
+  </section>
+
+  <section id="bench" aria-labelledby="bench-title">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="bench-title">Agent workload</h2>
+        <span class="note">2.6k shared system prompt · 2 turns × 64 tokens</span>
+      </div>
+      <p class="section-sub">
+        Terrazzo runs with <span class="mono">--profile agent</span> and a pre-registered system prompt.
+        Ollama uses its native <span class="mono">/api/chat</span>; vLLM-Metal serves the same MLX snapshot.
+        All three report real completion tokens.
+      </p>
+
+      <div class="chart" role="img" aria-label="Aggregate throughput grouped by concurrent sessions: at 1 and 4 sessions Terrazzo leads, at 16 sessions vLLM leads.">
+        <div class="chart-head">
+          <h3>Aggregate throughput (tok/s, higher is better)</h3>
+          <div class="legend">
+            <span><i class="dot t"></i>Terrazzo</span>
+            <span><i class="dot o"></i>Ollama 0.34.4</span>
+            <span><i class="dot v"></i>vLLM-Metal</span>
+          </div>
+        </div>
+        <div class="groups">
+          <div class="group">
+            <div class="bars">
+              <div class="bar-wrap"><span class="bar-val">59.4</span><div class="bar t" style="height:48.6%"></div><span class="bar-name">TZ</span></div>
+              <div class="bar-wrap"><span class="bar-val">19.6</span><div class="bar o" style="height:16.1%"></div><span class="bar-name">OL</span></div>
+              <div class="bar-wrap"><span class="bar-val">43.5</span><div class="bar v" style="height:35.6%"></div><span class="bar-name">VL</span></div>
+            </div>
+            <div class="group-label"><b>1 session</b></div>
+          </div>
+          <div class="group">
+            <div class="bars">
+              <div class="bar-wrap"><span class="bar-val">74.1</span><div class="bar t" style="height:60.7%"></div><span class="bar-name">TZ</span></div>
+              <div class="bar-wrap"><span class="bar-val">32.6</span><div class="bar o" style="height:26.7%"></div><span class="bar-name">OL</span></div>
+              <div class="bar-wrap"><span class="bar-val">43.8</span><div class="bar v" style="height:35.9%"></div><span class="bar-name">VL</span></div>
+            </div>
+            <div class="group-label"><b>4 sessions</b></div>
+          </div>
+          <div class="group">
+            <div class="bars">
+              <div class="bar-wrap"><span class="bar-val">88.7</span><div class="bar t" style="height:72.6%"></div><span class="bar-name">TZ</span></div>
+              <div class="bar-wrap"><span class="bar-val">40.6</span><div class="bar o" style="height:33.3%"></div><span class="bar-name">OL</span></div>
+              <div class="bar-wrap"><span class="bar-val">122.1</span><div class="bar v" style="height:100%"></div><span class="bar-name">VL</span></div>
+            </div>
+            <div class="group-label"><b>16 sessions</b></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-2" style="margin-top:16px">
+        <div class="table-wrap">
+          <table aria-label="First-token latency by backend and concurrency">
+            <thead><tr><th>TTFT p50</th><th>1 session</th><th>4 sessions</th><th>16 sessions</th></tr></thead>
+            <tbody>
+              <tr><td>Terrazzo</td><td class="best">0.29 s</td><td class="best">0.60 s</td><td>2.56 s</td></tr>
+              <tr><td>Ollama</td><td>2.21 s</td><td>5.16 s</td><td>22.39 s</td></tr>
+              <tr><td>vLLM-Metal</td><td class="best">0.19 s</td><td>3.25 s</td><td class="best">1.57 s</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-wrap">
+          <table aria-label="TTFT p95 by backend and concurrency">
+            <thead><tr><th>TTFT p95</th><th>1 session</th><th>4 sessions</th><th>16 sessions</th></tr></thead>
+            <tbody>
+              <tr><td>Terrazzo</td><td class="best">0.37 s</td><td class="best">1.44 s</td><td>3.49 s</td></tr>
+              <tr><td>Ollama</td><td>4.21 s</td><td>7.80 s</td><td>25.04 s</td></tr>
+              <tr><td>vLLM-Metal</td><td class="best">0.24 s</td><td>5.78 s</td><td class="best">2.00 s</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="table-wrap" style="margin-top:16px">
+        <table aria-label="Decode throughput short prompt">
+          <thead><tr><th>Decode, short prompt (128 tokens)</th><th>tok/s</th><th>vs Ollama</th></tr></thead>
+          <tbody>
+            <tr><td>Terrazzo (MLX 4-bit)</td><td class="best">101.1</td><td class="best">1.51×</td></tr>
+            <tr><td>Ollama qwen3:4b (num_ctx 8192)</td><td>67.0</td><td class="muted">1.00×</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="callout" style="margin-top:14px">
+        vLLM's single-session figure is the steady-state run; its first run after startup includes
+        kernel warm-up (15.1 tok/s / 2.95 s) and is excluded. Ollama's 16-session latency is dominated
+        by its default <span class="mono">num_parallel=1</span> — a configuration limit, not a capability ceiling.
+      </p>
+    </div>
+  </section>
+
+  <section id="long" aria-labelledby="long-title">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="long-title">Long system prompts &amp; prefix caching</h2>
+        <span class="note">pre-registration is the differentiator</span>
+      </div>
+      <p class="section-sub">
+        A pre-registered prefix is prefill work done once, before traffic. Cold first-token latency
+        for 2k / 4k / 8k shared prompts:
+      </p>
+      <div class="table-wrap">
+        <table aria-label="Cold time to first token for shared system prompts">
+          <thead><tr><th>Prompt</th><th>Terrazzo default</th><th>Terrazzo pre-registered</th><th>Ollama cold</th><th>Speed-up</th></tr></thead>
+          <tbody>
+            <tr><td>2k tokens</td><td>4.37 s</td><td class="best">0.154 s</td><td>3.20 s</td><td class="best">20.8×</td></tr>
+            <tr><td>4k tokens</td><td>8.91 s</td><td class="best">0.242 s</td><td>6.95 s</td><td class="best">28.7×</td></tr>
+            <tr><td>8k tokens</td><td>19.87 s</td><td class="best">0.343 s</td><td>17.61 s</td><td class="best">51.3×</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="grid-2" style="margin-top:16px">
+        <div class="card">
+          <h3>Warm reuse: Ollama is still faster</h3>
+          <p>
+            When the exact same prompt is reused, Ollama answers in <span class="mono">0.033–0.060 s</span>
+            at 2k–8k versus Terrazzo's <span class="mono">0.081–0.153 s</span>. Terrazzo's advantage is the
+            first request of a new shared prompt, not pure cache hits.
+          </p>
+        </div>
+        <div class="card">
+          <h3>Long-context decode</h3>
+          <p>
+            87.2 tok/s at 1k, 76.3 at 2k, 70.7 at 4k, 57.2 at 8k.
+            Decode on the same 2k/4k/8k prompts with a pre-registered prefix:
+            <span class="mono">82.8 / 74.6 / 57.0 tok/s</span> vs Ollama
+            <span class="mono">45.2 / 43.6 / 38.0</span>.
+          </p>
+        </div>
+      </div>
+      <div class="grid-3" style="margin-top:16px">
+        <div class="stat" style="--accent: var(--teal)"><div class="k">3.9 <small>GB</small></div><div class="l">peak MLX memory, 1 session</div></div>
+        <div class="stat" style="--accent: var(--blue)"><div class="k">4.9 <small>GB</small></div><div class="l">peak MLX memory, 4 sessions</div></div>
+        <div class="stat" style="--accent: var(--terra)"><div class="k">9.85 <small>GB</small></div><div class="l">peak MLX memory, 16 sessions</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="positioning" aria-labelledby="pos-title">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="pos-title">Where it wins — and where it doesn't</h2>
+      </div>
+      <div class="grid-2">
+        <div class="card win">
+          <span class="tag">Wins</span>
+          <h3>Agent traffic on one Mac</h3>
+          <p>
+            2.2× Ollama's throughput at 16 concurrent sessions, pre-warmed first token 10–50× faster
+            on 2k–8k shared prompts, and single-stream / 4-session latency better than vLLM-Metal.
+            One process speaks OpenAI and Ollama, with tools, JSON Schema and a model store.
+          </p>
+        </div>
+        <div class="card lose">
+          <span class="tag">Doesn't</span>
+          <h3>Scale-out throughput and cold prefix reuse</h3>
+          <p>
+            vLLM-Metal beats 16-session throughput (122.1 vs 88.7 tok/s) and TTFT (1.57 vs 2.56 s).
+            Ollama is faster for cold prefill without pre-registration and for pure warm-prefix reuse.
+            No Ollama registry, no GoFF, no embeddings, single machine.
+          </p>
+        </div>
+      </div>
+      <p class="callout">
+        <b>Honest summary:</b> Terrazzo is an agent inference gateway for one Apple Silicon machine,
+        not a drop-in throughput replacement for vLLM at scale. The paged-sharing attempt that would
+        have changed the memory story was measured and lost — the numbers are kept in
+        <a href="https://github.com/louisyeaaah/terrazzo/blob/main/BENCHMARKS.md">BENCHMARKS</a>.
+      </p>
+    </div>
+  </section>
+
+  <section id="features" aria-labelledby="features-title">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="features-title">What's inside</h2>
+      </div>
+      <div class="features">
+        <div class="feature">
+          <span class="ico terra" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span>
+          <div><h4>Paged KV engine</h4><p>Block manager with ref-counting, continuous batching, round-robin chunked prefill and LCFS preemption.</p></div>
+        </div>
+        <div class="feature">
+          <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h11M10 6l6 6-6 6"/><path d="M19 4v16" opacity=".5"/></svg></span>
+          <div><h4>Prefix caching</h4><p>Exact shared-prefix snapshots, automatic batch registration, <span class="mono">/v1/prewarm</span> and <span class="mono">--system-file</span> for zero-prefill first tokens.</p></div>
+        </div>
+        <div class="feature">
+          <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 17V7a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3Z"/><path d="M8 9h8M8 13h5"/></svg></span>
+          <div><h4>OpenAI + Ollama APIs</h4><p>Chat/completions, streaming, JSON Schema constrained decoding, tools/function calling, NDJSON Ollama endpoints.</p></div>
+        </div>
+        <div class="feature">
+          <span class="ico terra" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 4h10v4a5 5 0 0 1-10 0V4Z"/><path d="M12 13v4M9 20h6"/></svg></span>
+          <div><h4>Ollama-style CLI</h4><p><span class="mono">run</span>, <span class="mono">pull</span>, <span class="mono">list</span>, <span class="mono">show</span>, <span class="mono">rm</span>, <span class="mono">cp</span>, <span class="mono">create -f Modelfile</span>, <span class="mono">ps</span>, <span class="mono">prewarm</span>.</p></div>
+        </div>
+        <div class="feature">
+          <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 4 7v6c0 4.5 3.5 7.5 8 8 4.5-.5 8-3.5 8-8V7l-8-4Z"/><path d="m9 12 2 2 4-4"/></svg></span>
+          <div><h4>Production hardening</h4><p>Constant-time auth, optional TLS, rate limits, bounded concurrency, request deadlines, worker hang watchdog.</p></div>
+        </div>
+        <div class="feature">
+          <span class="ico terra" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5 3 12l5 7M16 5l5 7-5 7M14 4l-4 16"/></svg></span>
+          <div><h4>Boring reliability</h4><p>226 core tests + 31 kernel tests, MLX-free CI job, pinned MLX versions, validated runtime-patch contract.</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="arch" aria-labelledby="arch-title">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="arch-title">Architecture</h2>
+        <span class="note">DeepInfer semantics, MLX internals</span>
+      </div>
+      <div class="arch">
+        <div class="node"><div class="n">DeepInfer</div><div class="t">Scheduler semantics</div><div class="d">chunked prefill, LCFS preemption, FIFO wait queue</div></div>
+        <div class="arrow">→</div>
+        <div class="node hl"><div class="n">terrazzo/scheduler.py</div><div class="t">Scheduler</div><div class="d">round-robin admission, preemption guard</div></div>
+        <div class="arrow">→</div>
+        <div class="node"><div class="n">terrazzo/blocks.py</div><div class="t">Block manager</div><div class="d">paged KV, ref-count + free list</div></div>
+        <div class="arrow">→</div>
+        <div class="node"><div class="n">terrazzo/engine.py</div><div class="t">Engine.step()</div><div class="d">MLX runner, prefix cache, streaming</div></div>
+        <div class="arrow">→</div>
+        <div class="node hl2"><div class="n">terrazzo/server.py</div><div class="t">HTTP APIs</div><div class="d">OpenAI + Ollama + /stats</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="start" aria-labelledby="start-title">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="start-title">Run it</h2>
+      </div>
+      <div class="code-grid">
+        <div class="code-card">
+          <div class="code-head"><span>shell</span><button class="copy" type="button">copy</button></div>
+<pre><code><span class="c"># clone + install (Apple Silicon, macOS 14+)</span>
+git clone https://github.com/louisyeaaah/terrazzo.git
+cd terrazzo
+python3 -m venv .venv &amp;&amp; . .venv/bin/activate
+pip install -e . -c constraints.txt
+
+<span class="c"># pull a model, start the server</span>
+terrazzo pull mlx-community/Qwen3-4B-4bit
+terrazzo serve --model Qwen3-4B-4bit --port 8080 \
+    --profile agent --system-file system.txt</code></pre>
+        </div>
+        <div class="code-card">
+          <div class="code-head"><span>openai / ollama api</span><button class="copy" type="button">copy</button></div>
+<pre><code><span class="c"># OpenAI-compatible</span>
+curl localhost:8080/v1/chat/completions \
+  -H 'Content-Type: application/json' -d '{
+  "model": "terrazzo",
+  "messages": [{"role":"user","content":"Explain KV cache."}],
+  "max_tokens": 128
+}'
+
+<span class="c"># prewarm a shared prefix (or at startup)</span>
+terrazzo prewarm --base http://127.0.0.1:8080 \
+    --system-file system.txt
+
+<span class="c"># native Ollama-style</span>
+curl localhost:8080/api/chat -d '{
+  "model":"terrazzo","stream":false,
+  "messages":[{"role":"user","content":"hi"}]
+}'</code></pre>
+        </div>
+      </div>
+      <p class="section-sub" style="margin-top:18px">
+        Full commands and limitations: <a href="https://github.com/louisyeaaah/terrazzo/blob/main/docs/QUICKSTART.en.md">Quick start</a> ·
+        <a href="https://github.com/louisyeaaah/terrazzo/blob/main/README.md">README</a> ·
+        <a href="https://github.com/louisyeaaah/terrazzo/blob/main/docs/COMPATIBILITY.md">Compatibility</a>.
+      </p>
+    </div>
+  </section>
+
+  <section id="validation" aria-labelledby="val-title">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="val-title">Verification</h2>
+      </div>
+      <div class="validation">
+        <div class="vcard"><div class="n">core suite</div><div class="v">226</div><div class="s">tests, 1 skipped (needs a model)</div><a href="https://github.com/louisyeaaah/terrazzo/actions/workflows/ci.yml">CI history ↗</a></div>
+        <div class="vcard"><div class="n">experimental kernels</div><div class="v">31</div><div class="s">tests, 3 skipped</div><a href="https://github.com/louisyeaaah/terrazzo/tree/main/experiments">experiments ↗</a></div>
+        <div class="vcard"><div class="n">pure Python, MLX blocked</div><div class="v">129</div><div class="s">tests run on Linux CI</div><a href="https://github.com/louisyeaaah/terrazzo/actions/runs/40431567984">last run ↗</a></div>
+        <div class="vcard"><div class="n">CI jobs</div><div class="v">3</div><div class="s">Linux, macOS+Metal, manual model E2E</div><a href="https://github.com/louisyeaaah/terrazzo/actions">actions ↗</a></div>
+      </div>
+      <p class="callout">
+        The numbers on this page are a snapshot. Every benchmark row, environment field and
+        the negative results (MMA kernels, paged-sharing attempt) live in
+        <a href="https://github.com/louisyeaaah/terrazzo/blob/main/BENCHMARKS.md">BENCHMARKS.md</a>.
+        Machine load materially changes laptop TTFT; compare relatively, not absolutely.
+      </p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="cols">
+      <div>
+        <a class="brand" href="index.html" style="font-size:15px">
+          <svg viewBox="0 0 64 64" aria-hidden="true"><rect x="10" y="10" width="20" height="20" rx="4" fill="#e2725b"/><rect x="34" y="10" width="20" height="20" rx="4" fill="#4fd1c5"/><rect x="10" y="34" width="20" height="20" rx="4" fill="#f4e9d8"/><rect x="34" y="34" width="20" height="20" rx="4" fill="#7aa7ff"/></svg>
+          terrazzo
+        </a>
+        <div style="margin-top:8px">Local LLM inference for Apple Silicon.</div>
+      </div>
+      <div>
+        <a href="https://github.com/louisyeaaah/terrazzo">GitHub</a> ·
+        <a href="https://github.com/louisyeaaah/terrazzo/blob/main/README.md">README</a> ·
+        <a href="https://github.com/louisyeaaah/terrazzo/blob/main/BENCHMARKS.md">Benchmarks</a>
+      </div>
+      <div>
+        <a href="https://github.com/louisyeaaah/terrazzo/blob/main/docs/DESIGN.md">Design</a> ·
+        <a href="https://github.com/louisyeaaah/terrazzo/blob/main/docs/COMPARISON.en.md">Comparison</a> ·
+        <a href="zh.html">中文</a>
+      </div>
+    </div>
+    <p class="fine">
+      Measurements: Apple M1 Max 64 GB, macOS 26.6.2, load 2–4, 2026-10-27; Terrazzo 0.3.0 on MLX
+      0.32.4 / mlx-lm 0.31.3; Ollama 0.34.4 with qwen3:4b (GGUF Q4_K_M); vLLM 0.32.0 + vllm-metal.
+      Apache-2.0. This page is a static snapshot; source in <span class="mono">site/</span>.
+    </p>
+  </div>
+</footer>
+
+<script src="app.js" defer></script>
+</body>
+</html>
