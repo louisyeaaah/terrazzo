@@ -54,6 +54,11 @@ behaviour of the patches and run in CI on macOS:
 
 ## Benchmarks
 
+`bench/agent_workload.py` uses true token counts for both backends: Terrazzo via
+`stream_options.include_usage`, and Ollama via the native `/api/chat` `eval_count`
+(`--api ollama`). Older numbers produced by SSE-chunk counting are marked
+`chunks(approx)` in the results and must not be compared across backends.
+
 Every benchmark run records its environment in the output JSON: host, Python,
 git commit, `terrazzo` version, backend version, load average, and `/stats`
 snapshots (`bench/agent_workload.py`). Absolute numbers are only comparable

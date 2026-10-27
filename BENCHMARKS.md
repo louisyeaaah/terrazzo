@@ -1890,4 +1890,14 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
 | 跨后端 token 不可比 | `bench/agent_workload.py --api ollama` 走原生 `/api/chat`，用 `eval_count` 真 token（旧路径保留并标 `chunks(approx)`） | `tests/test_agent_bench.py` |
 | mlx-lm patch 仅版本检查 | COMPATIBILITY 明确"行为级 smoke tests"清单（mask/dense/paged/multi-query/auto-blocks），并纳入 macOS CI | `docs/COMPATIBILITY.md` |
 
-修复后全量测试与 CI 结果记录在本节末尾（以推送后 Actions 为准）。
+**验证（2026-10-27，Ollama 0.34.4 / qwen3:4b，load ~5.8，本机）**：
+
+- `--api ollama`（原生 `/api/chat`，`think=false`）：4 会话 × 2 轮 × 64 token、2.6k 共享系统提示 →
+  `token_source="ollama-eval"`，`output_tokens=512`（来自 `eval_count`）、聚合 **46.5 tok/s**、
+  TTFT p50 3.64 s / p95 4.47 s。
+- 同一 Ollama 的 OpenAI 兼容端点也返回 `usage`（`token_source="usage"`，`output_tokens=512`），
+  说明新版 bench 对 Ollama 的两种接口都能拿到真 token 数，跨后端对比不再依赖块计数。
+- Ollama 原生模式默认 `think=false`：qwen3 在 Ollama 默认开启思考会把 content 吃空、多轮历史失真。
+
+修复后全量测试：核心 226（1 skipped）+ 实验 31；CI 双 job 绿（Linux 纯 Python / macOS MLX +
+Metal kernel + experiments），手动 `workflow_dispatch` 可跑模型 E2E。

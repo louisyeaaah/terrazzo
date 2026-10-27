@@ -192,6 +192,9 @@ def chat_ollama(base: str, model: str, messages: list[dict], max_tokens: int) ->
     """Native Ollama /api/chat: the done frame carries real eval_count/prompt_eval_count."""
     body = json.dumps({
         "model": model, "messages": messages, "stream": True,
+        # qwen3 defaults to thinking on Ollama; disable it so content answers are
+        # comparable with the OpenAI-mode runs (and so multi-turn history is real)
+        "think": False,
         "options": {"temperature": 0.0, "num_predict": max_tokens},
     }).encode()
     req = urllib.request.Request(base.rstrip("/") + "/api/chat", data=body,
