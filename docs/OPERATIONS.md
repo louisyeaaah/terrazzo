@@ -82,10 +82,10 @@ watch the server log for `[engine] step failed` lines.
 ## Tuned FIFO presets
 
 `--profile agent` (16 slots + 16-request admission waves) is the tuned starting point for
-16 sessions sharing a long system prompt. `--profile mixed` (4 slots + 4-request waves) is
-the tuned starting point when shared and unique prefixes are mixed; a cap sweep found the
-best cap varies by workload (mixed ~4, shared-prefix 16), so the profile is a starting
-point, not a universal optimum. `cost` scheduler remains experimental. `/stats.request_stages`
+16 sessions sharing a long system prompt. `--profile mixed` (admission cap 4, completion
+batch 16, 16-request admission waves) matches the corrected fixed4 experiment; a cap sweep
+found the best cap varies by workload (mixed ~4, shared-prefix 16), so the profile is a
+starting point, not a universal optimum. `cost` scheduler remains experimental. `/stats.request_stages`
 shows added/first_token/finished/aborted/failed counts; `scripts/watch_health.py` polls
 `/health` and calls SIGUSR1 on failure when `TERRAZZO_STACK_DUMP=1`.
 

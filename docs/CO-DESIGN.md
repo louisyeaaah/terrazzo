@@ -392,10 +392,14 @@ shared-2; no flapping. It tracks the oracle on shared-1 and stays close on mixed
 switch back to 16 lags in shared-2 (p50 2.09 vs 0.48 s).
 
 **Corrected conclusion:** with the confound removed, **fixed cap4 is the best static
-policy** (26.4 tok/s, 116.6 s wall) and is very close to the per-phase oracle (26.0,
-117.9 s). Auto (23.9, 128.4 s) beats fixed16 on mixed tail and shared memory, but does
-**not** beat fixed4 overall. The previous "auto tracks oracle / beats fixed caps" claim was
-confounded and is retracted for this workload.
+policy** (26.4 tok/s, 116.6 s wall) and is close to the per-phase oracle **on aggregate
+throughput and total wall time only** (26.0, 117.9 s). It is not close on every phase tail:
+shared-2 p95 is 3.63 s vs 0.69 s for oracle and 0.61 s for fixed4 on shared-1 vs 0.61 s
+oracle. The trade-off is real: oracle keeps 16 slots on shared phases; fixed4 keeps 4.
+Auto (23.9, 128.4 s) beats fixed16 on mixed tail and shared memory, but does **not** beat
+fixed4 overall. The previous "auto tracks oracle / beats fixed caps" claim was confounded
+and is retracted for this workload. `--profile mixed` now pins exactly the tested fixed4
+configuration: admission cap 4, completion batch 16, ADMIT_BATCH 16, ADMIT_WAIT 4.
 
 ### 13.2 Validation sequence (mixed → shared → mixed)
 

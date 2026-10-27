@@ -175,6 +175,8 @@ class Engine:
         self._lock = threading.RLock()
         # Streams/outputs have their own lock: the hang watchdog must be able to
         # fail requests while the worker thread holds _lock inside runner.step().
+        # Lock order: _lock -> _stream_lock is allowed; never acquire _lock while
+        # holding _stream_lock (fail_streams/stream/_push only take the stream lock).
         self._stream_lock = threading.RLock()
         self._streams: dict[str, "queue.Queue"] = {}
         self._outputs: dict[str, RequestOutput] = {}
@@ -278,9 +280,19 @@ class Engine:
 
     def abort(self, request_id: str) -> bool:
         with self._lock:
+            uid = self._inserted.pop(request_id, None)
             ok = self.scheduler.abort(request_id)
             if ok:
                 self.request_stages["aborted"] += 1
+            # Remove a running request from the executor too.  scheduler.abort()
+            # frees the paged blocks; leaving the uid in BatchGenerator would keep
+            # generating and could later touch freed/reused KV state.
+            if uid is not None:
+                try:
+                    self.runner.remove([uid])
+                except Exception:
+                    pass
+                self.runner.uid_to_seq.pop(uid, None)
         if ok:
             # terminate a handler waiting on this stream as well, then release it
             with self._stream_lock:

@@ -136,9 +136,12 @@ KV 字节安排接纳顺序**（替代 FIFO）。这是有限的 cache/admission
 - 自动 cap 实验（单进程 shared → mixed → shared）：修正第一版的 admission profile confound
   后（fixed4 原先用了不同的 ADMIT_BATCH/WAIT 和 runner batch），**fixed cap4 是当前最好的
   静态策略**：26.4 tok/s / 116.6 s wall，auto 23.9 / 128.4 s，fixed16 22.8 / 134.9 s；
-  oracle 16/4/16 为 26.0 / 117.9 s。auto 仍能 16→4→16 切换且不抖动，mixed 尾部优于
-  fixed16，但整体没有优于 fixed4。上一轮“auto 接近 oracle / 优于两个固定 cap”的结论因
-  confound 撤回。auto 保持 opt-in，手动预设仍是默认。
+  oracle 16/4/16 为 26.0 / 117.9 s。“接近 oracle”只限整体吞吐/总耗时：fixed4 的 shared
+  阶段 p95 为 2.10/3.63 s，oracle 为 0.61/0.69 s，阶段延迟仍有明显取舍。auto 仍能
+  16→4→16 切换且不抖动，mixed 尾部优于 fixed16，但整体没有优于 fixed4。上一轮“auto
+  接近 oracle / 优于两个固定 cap”的结论因 confound 撤回。`--profile mixed` 已对齐
+  本次 fixed4 配置（cap4、completion batch16、ADMIT_BATCH16、WAIT4）。auto 保持
+  opt-in，手动预设仍是默认。
 - 全共享前缀、8 会话 × 2 轮、8k 长提示都没有排序收益；前缀缓存本身仍是最大杠杆。
 
 调度器仍不能控制执行器的 prefill 预算（调度 16.4k vs 实际 41.2k prompt tokens，2.5×），
@@ -236,7 +239,7 @@ BENCHMARKS.md      所有测量数据，包括输掉的那些
 ## 测试与基准
 
 ```bash
-python -m unittest discover -s tests                  # 核心套件（247 个测试，1 skipped）
+python -m unittest discover -s tests                  # 核心套件（249 个测试，1 skipped）
 python -m unittest discover -s experiments/tests -v   # 实验内核（31 个测试）
 python scripts/ci_core_tests.py                       # MLX 被 block 的纯 Python 子集
 bash bench/head_to_head.sh                            # 与 Ollama 的 head-to-head

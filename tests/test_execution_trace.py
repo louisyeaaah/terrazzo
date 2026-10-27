@@ -104,3 +104,55 @@ class LifecycleTest(unittest.TestCase):
         final = q.get(timeout=1)
         self.assertTrue(final.finished)
         self.assertEqual(final.finish_reason, "stop")
+
+
+    def test_abort_removes_executor_request_and_releases_streams(self):
+        import queue as _queue
+        e = self._engine()
+        uid = 7
+        e._inserted = {"r-abort": uid}
+        removed = []
+        class FakeRunner:
+            uid_to_seq = {uid: object()}
+            def remove(self, uids):
+                removed.extend(uids)
+        e.runner = FakeRunner()
+        class FakeScheduler:
+            def abort(self, rid):
+                return True
+        e.scheduler = FakeScheduler()
+        q = _queue.Queue()
+        e._streams["r-abort"] = q
+        e._outputs["r-abort"] = object()
+        self.assertTrue(e.abort("r-abort"))
+        self.assertEqual(removed, [uid])
+        self.assertNotIn(uid, e.runner.uid_to_seq)
+        self.assertEqual(e._streams, {})
+        self.assertEqual(e._outputs, {})
+        self.assertEqual(q.get(timeout=1)["finish_reason"], "abort")
+
+    def test_worker_continues_after_watchdog_released_outputs(self):
+        from types import SimpleNamespace
+        e = self._engine()
+        e._inserted = {"r1": 7}
+        seq = Sequence(request_id="r1", prompt_token_ids=[1, 2],
+                       sampling_params=SamplingParams(max_tokens=4))
+        class FakeRunner:
+            uid_to_seq = {7: seq}
+            def remove(self, uids):
+                pass
+        e.runner = FakeRunner()
+        class FakeScheduler:
+            finished = []
+            def finish(self, s):
+                self.finished.append(s)
+        e.scheduler = FakeScheduler()
+        e.num_decode_tokens = 0
+        e._step_decode_tokens = 0
+        # fail_streams removed the output/stream, but the executor can still emit
+        # one more response before it is drained; this must not raise.
+        e.fail_streams(RuntimeError("hung"))
+        out = e._process_generation_responses(
+            [SimpleNamespace(uid=7, token=3, finish_reason=None, prompt_cache=None)])
+        self.assertEqual(seq.output_token_ids, [3])
+        self.assertEqual(out, [])

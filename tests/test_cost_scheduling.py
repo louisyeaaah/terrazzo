@@ -166,9 +166,13 @@ class ProfilePresetTest(unittest.TestCase):
 
         old = {k: os.environ.get(k) for k in ("TERRAZZO_ADMIT_BATCH", "TERRAZZO_ADMIT_WAIT")}
         try:
-            args = SimpleNamespace(profile="mixed", max_num_seqs=8)
+            args = SimpleNamespace(profile="mixed", max_num_seqs=8,
+                                   completion_batch_size=None)
             apply_agent_profile(args)
             self.assertEqual(args.max_num_seqs, 4)
+            self.assertEqual(args.completion_batch_size, 16)
+            self.assertEqual(os.environ.get("TERRAZZO_ADMIT_BATCH"), "16")
+            self.assertEqual(os.environ.get("TERRAZZO_ADMIT_WAIT"), "4")
             # explicit user values must win
             args2 = SimpleNamespace(profile="mixed", max_num_seqs=12)
             apply_agent_profile(args2)

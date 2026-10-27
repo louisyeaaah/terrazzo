@@ -361,7 +361,11 @@ def apply_agent_profile(args) -> None:
     if profile == "mixed":
         if getattr(args, "max_num_seqs", 8) == 8:
             args.max_num_seqs = 4
-        os.environ.setdefault("TERRAZZO_ADMIT_BATCH", "4")
+        # Match the measured fixed4 configuration exactly: admission cap 4,
+        # 16-wide runner batch, and the same wave settings as the other arms.
+        if getattr(args, "completion_batch_size", None) is None:
+            args.completion_batch_size = 16
+        os.environ.setdefault("TERRAZZO_ADMIT_BATCH", "16")
         os.environ.setdefault("TERRAZZO_ADMIT_WAIT", "4")
         return
     if profile != "agent":

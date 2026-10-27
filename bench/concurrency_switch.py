@@ -44,9 +44,9 @@ def start(arm: str, model: str, port: int, system_text: str, log_path: Path) -> 
     cmd = [PY, "-m", "terrazzo", "serve", "--model", model,
            "--host", "127.0.0.1", "--port", str(port), "--no-thinking"]
     if arm == "fixed4":
-        # isolate the admission cap: keep the same runner batch as the other arms
-        cmd += ["--profile", "default", "--max-num-seqs", "4",
-                "--completion-batch-size", "16"]
+        # the mixed preset is the product configuration; it pins cap4 and keeps a
+        # 16-wide runner batch so the only difference from other arms is the cap
+        cmd += ["--profile", "mixed"]
     else:
         cmd += ["--profile", "agent"]
     if arm in ("oracle", "auto"):

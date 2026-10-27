@@ -1848,7 +1848,7 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
   cache 方法是否存在，失败给出明确错误；`TERRAZZO_SKIP_MLX_LM_CHECK=1` 仅用于试验新版本。
 - `docs/COMPATIBILITY.md` 记录测试矩阵与不支持的平台。
 
-**当前测试**：核心 247 个（1 skipped）+ 实验内核 31 个；CI 两个主 job + 手动模型 E2E job（见 workflow）。
+**当前测试**：核心 249 个（1 skipped）+ 实验内核 31 个；CI 两个主 job + 手动模型 E2E job（见 workflow）。
 
 ## 45. Tools / function calling（2026-10-27）
 
@@ -1874,7 +1874,7 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
 
 关键修复：带 tools 时默认 `enable_thinking=false`（原来 `<think>` 把 token 预算吃光，
 128 token 内根本到不了 `<tool_call>`）；OpenAI 报文中 assistant `content:null` 需规范化为空串，
-否则 Jinja 模板抛 `'NoneType' is not iterable`。全套 **247 个核心测试 OK（1 skipped）+ 31 个实验内核测试**（§47 后）。
+否则 Jinja 模板抛 `'NoneType' is not iterable`。全套 **249 个核心测试 OK（1 skipped）+ 31 个实验内核测试**（§47 后）。
 
 ## 47. 残余风险修复（2026-10-27）
 
@@ -1900,8 +1900,8 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
 - Ollama 原生模式默认 `think=false`：qwen3 在 Ollama 默认开启思考会把 content 吃空、多轮历史失真。
 
 **修复后验证（commit `fbbdcb0`）**：
-- 本地：核心 **247 tests（1 skipped）**、实验内核 **31 tests（3 skipped）**、纯 Python（MLX blocked）
-  **150 run / 0 fail / 11 skip**。
+- 本地：核心 **249 tests（1 skipped）**、实验内核 **31 tests（3 skipped）**、纯 Python（MLX blocked）
+  **152 run / 0 fail / 13 skip**。
 - CI（[run 40426254576](https://github.com/louisyeaaah/terrazzo/actions/runs/40426254576)）：
   `Core tests (pure Python, MLX blocked)` ✅、`macOS (MLX) import + tests`（含 Metal kernel 与
   experiments）✅；`Model E2E` 仅在手动 `workflow_dispatch` 时运行（本次按预期 skipped）。
@@ -2165,9 +2165,14 @@ completion_batch_size=16，仅 admission cap 不同；harness 记录每组生效
 | oracle 16/4/16 | 26.0 | 117.9 s | 0.448 / 0.61 s | 34.03 / 61.45 s | 0.48 / 0.69 s | 19.0 GB |
 | auto | 23.9 | 128.4 s | 0.427 / 0.67 s | 37.38 / 68.24 s | 2.09 / 3.76 s | 19.1 GB |
 
-auto 正确切换 16→4→16 且不抖动，但 **修正 confound 后 fixed4 整体最好**且接近 oracle；
-auto 仅优于 fixed16，未优于 fixed4。上一轮“auto 接近 oracle / 优于两个固定 cap”的结论
-不再成立，已从 README/CO-DESIGN 撤回。auto 保持 opt-in 实验功能，手动预设仍是默认。
+auto 正确切换 16→4→16 且不抖动，但 **修正 confound 后 fixed4 整体最好**；它只在整体
+吞吐/总耗时上接近 oracle，并非每阶段都接近：shared-1 p95 2.10 vs 0.61 s，shared-2 p95
+3.63 vs 0.69 s。auto 仅优于 fixed16，未优于 fixed4。上一轮“auto 接近 oracle / 优于两个
+固定 cap”的结论不再成立，已从 README/CO-DESIGN 撤回。auto 保持 opt-in 实验功能，手动
+预设仍是默认。
+
+`--profile mixed` 已与本次 fixed4 的测试配置对齐：admission cap=4、
+completion_batch_size=16、ADMIT_BATCH=16、ADMIT_WAIT=4；不再用“4 槽 + 4 波”的旧配置。
 
 ## 53. 代码审查后的可靠性修复（2026-10-27）
 
@@ -2178,3 +2183,7 @@ auto 仅优于 fixed16，未优于 fixed4。上一轮“auto 接近 oracle / 优
 | `_active_failures` 每次异常后被无条件清零，`>=3` 永不触发 | 只在 `engine.step()` 正常返回时清零 |
 | paged/pool `/stats` 访问未定义的 `self.auto_cap` → AttributeError | `BaseRuntime` 增加 `auto_cap=None` / `_auto_inputs` 默认值 |
 | fixed4 对照组 admission profile 不同 | 修正 harness：统一 ADMIT_BATCH/WAIT/settle/runner batch，清理环境开关，记录生效配置 |
+| watchdog 清理后 worker 恢复时可能访问已删除输出 | `_process_generation_responses` 用 `get()` 跳过已释放请求；新增“fail_streams 后仍能处理一条响应”测试 |
+| abort 只结束 HTTP 流，未从执行器移除 | `Engine.abort` 现在同时 `runner.remove(uid)`、清理 `uid_to_seq`，scheduler 释放 block；新增测试 |
+| `_stream_lock` 与执行锁反向获取 | 锁顺序固定为 `_lock → _stream_lock`；`fail_streams` 只取流锁，abort 先释放执行锁再取流锁；测试覆盖 watchdog 场景 |
+| `--profile mixed` 与 fixed4 实测配置不一致 | 预设对齐：cap4、completion batch16、ADMIT_BATCH16、ADMIT_WAIT4；测试断言生效配置 |
