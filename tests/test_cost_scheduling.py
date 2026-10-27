@@ -156,3 +156,26 @@ class MemoryCostSchedulerTest(unittest.TestCase):
         sch.add(b)
         out = sch.schedule()
         self.assertEqual([c.seq.request_id for c in out.chunks], ["small-kv", "big-kv"])
+
+
+class ProfilePresetTest(unittest.TestCase):
+    def test_mixed_profile_sets_four_slots(self):
+        import os
+        from types import SimpleNamespace
+        from terrazzo.cli import apply_agent_profile
+
+        old = {k: os.environ.get(k) for k in ("TERRAZZO_ADMIT_BATCH", "TERRAZZO_ADMIT_WAIT")}
+        try:
+            args = SimpleNamespace(profile="mixed", max_num_seqs=8)
+            apply_agent_profile(args)
+            self.assertEqual(args.max_num_seqs, 4)
+            # explicit user values must win
+            args2 = SimpleNamespace(profile="mixed", max_num_seqs=12)
+            apply_agent_profile(args2)
+            self.assertEqual(args2.max_num_seqs, 12)
+        finally:
+            for k, v in old.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v

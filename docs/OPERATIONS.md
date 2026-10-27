@@ -62,6 +62,7 @@ Defaults are deliberately conservative; override with environment variables:
 | `TERRAZZO_HANG_RESTART` | unset | `1` = exit(70) after a detected hang so a supervisor restarts the process |
 | `TERRAZZO_TLS_CERT` / `TERRAZZO_TLS_KEY` | unset | serve HTTPS (same as `--tls-cert/--tls-key`) |
 | `TERRAZZO_ADMIT_SETTLE_MS` | 0 | wait this long for near-simultaneous arrivals before admitting a wave (batch/cost scheduling experiments use 50) |
+| `TERRAZZO_STACK_DUMP` | unset | `1` = register SIGUSR1; `kill -USR1 <pid>` dumps every thread stack to the server log (hang diagnosis) |
 
 Auth is checked before the request body is read. A request that hits the deadline is
 aborted in the engine so it does not keep occupying KV. After three consecutive
@@ -73,6 +74,16 @@ watch the server log for `[engine] step failed` lines.
 - `POST /v1/abort {"request_id": "..."}` — clients may pass their own `request_id`
   in the completion body.
 - A client that disconnects mid-stream aborts its request automatically (KV freed).
+
+## Tuned FIFO presets
+
+`--profile agent` (16 slots + 16-request admission waves) is the tuned starting point for
+16 sessions sharing a long system prompt. `--profile mixed` (4 slots + 4-request waves) is
+the tuned starting point when shared and unique prefixes are mixed; a cap sweep found the
+best cap varies by workload (mixed ~4, shared-prefix 16), so the profile is a starting
+point, not a universal optimum. `cost` scheduler remains experimental. `/stats.request_stages`
+shows added/first_token/finished/aborted/failed counts; `scripts/watch_health.py` polls
+`/health` and calls SIGUSR1 on failure when `TERRAZZO_STACK_DUMP=1`.
 
 ## Known gaps / residual risks
 

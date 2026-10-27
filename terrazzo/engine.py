@@ -178,6 +178,8 @@ class Engine:
 
         # metrics
         self.num_steps = 0
+        self.request_stages = {"added": 0, "first_token": 0,
+                               "finished": 0, "aborted": 0, "failed": 0}
         self.prefix_hit_tokens = 0
         self.prefix_recompute_skips = 0
         self.prefix_reuse_autos = 0
@@ -227,6 +229,7 @@ class Engine:
                 request_id=rid, num_prompt_tokens=len(ids)
             )
             self._streams[rid] = queue.Queue()
+            self.request_stages["added"] += 1
             cached_est, snapshot_bytes = 0, 0
             if self.prefix_cache is not None:
                 hit = self.prefix_cache.peek(ids)
@@ -258,7 +261,10 @@ class Engine:
 
     def abort(self, request_id: str) -> bool:
         with self._lock:
-            return self.scheduler.abort(request_id)
+            ok = self.scheduler.abort(request_id)
+            if ok:
+                self.request_stages["aborted"] += 1
+            return ok
 
     def fail_streams(self, exc: BaseException) -> int:
         """Terminate every waiting stream without touching the scheduler.
@@ -280,6 +286,9 @@ class Engine:
                                     "error": f"{type(exc).__name__}: {exc}"})
                     except Exception:
                         pass
+            stages = getattr(self, "request_stages", None)
+            if stages is not None:
+                stages["failed"] += len(ids)
             return len(ids)
 
     def handle_failure(self, exc: BaseException) -> int:
@@ -306,6 +315,9 @@ class Engine:
                                     "error": f"{type(exc).__name__}: {exc}"})
                     except Exception:
                         pass
+            stages = getattr(self, "request_stages", None)
+            if stages is not None:
+                stages["failed"] += len(ids)
             return len(ids)
 
     # -------------------------------------------------------------------- step
@@ -550,7 +562,10 @@ class Engine:
             if seq is None:
                 continue
             token = int(r.token)
+            first = seq.first_token_time is None
             seq.append_token(token, seq.sampling_params.max_tokens)
+            if first:
+                self.request_stages["first_token"] += 1
             self.num_decode_tokens += 1
             self._step_decode_tokens += 1
             finish_reason = r.finish_reason
@@ -585,6 +600,7 @@ class Engine:
 
     def _collect_finished(self) -> None:
         for seq in self.scheduler.drain_finished():
+            self.request_stages["finished"] += 1
             out = self._outputs.get(seq.request_id)
             if out is None:
                 continue
@@ -690,6 +706,7 @@ class Engine:
             st["prefix_cache"] = {"enabled": False,
                                   "reuse_policy": self.cfg.prefix_reuse}
         st["scheduler_policy"] = self.cfg.scheduler_policy
+        st["request_stages"] = dict(self.request_stages)
         st["cost_model"] = self.cost_model.stats()
         c = dict(self._control_totals)
         c["actual_to_scheduled_prompt_ratio"] = round(

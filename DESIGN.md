@@ -221,10 +221,14 @@ not a step budget, and `insert_segments` is not a dynamic chunk controller.
 
 Phase 1 therefore only tests the controllable mechanism: cache-hit-aware admission order.
 A first mixed-traffic result showed p95 and memory gains over uncapped FIFO, but a Phase-2
-control (cache + FIFO with `--max-num-seqs 4`) beat cost ordering on throughput, p95 and
-memory in both burst and continuous-arrival workloads. The peak KV block count of FIFO-16
-and cost-ordering was identical, so the memory difference is transient prefill/copy
-pressure rather than fewer live KV blocks. The correct description is a limited
-cache/admission-scheduling experiment, not an algorithm–system co-optimization; details,
-negative results and the unresolved 16×2 hang are in
+control (cache + FIFO with `--max-num-seqs 4`) beat cost ordering on aggregate throughput,
+p95 and memory in both burst and continuous-arrival workloads. Ordering still changed
+service priority (continuous-arrival shared p50 14.7 s vs 35.0 s for cap4), which only
+matters if serving cache-hit requests first is a product requirement. FIFO-16 and
+cost-ordering reported the same *logical* KV token peak, so logical accounting cannot
+explain the memory difference; physical residency, padding and copy buffers were not
+measured. Tuned FIFO concurrency is the current default; cost ordering remains an
+experimental option. A cap sweep showed the best cap varies by workload (mixed ~4,
+shared-prefix 16), so the product exposes two explicit presets (`--profile mixed`,
+`--profile agent`) rather than a single magic value. Details, negative results and the unresolved 16×2 hang are in
 [docs/CO-DESIGN.md](docs/CO-DESIGN.md) and BENCHMARKS §49–50.

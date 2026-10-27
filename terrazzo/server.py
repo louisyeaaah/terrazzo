@@ -13,9 +13,12 @@ Both expose the same OpenAI-ish surface, so you can point a client at either.
 
 from __future__ import annotations
 
+import faulthandler
 import json
 import os
 import queue
+import signal
+import sys
 import threading
 import time
 import uuid
@@ -2044,6 +2047,11 @@ def serve(cfg: EngineConfig, host: str = "127.0.0.1", port: int = 8080,
     tls_cert = tls_cert or os.environ.get("TERRAZZO_TLS_CERT")
     tls_key = tls_key or os.environ.get("TERRAZZO_TLS_KEY")
     scheme = "https" if tls_cert else "http"
+    if os.environ.get("TERRAZZO_STACK_DUMP") == "1":
+        # diagnostics for hangs: `kill -USR1 <pid>` dumps every thread's stack to
+        # stderr (captured in the server log) without killing the process
+        faulthandler.register(signal.SIGUSR1, file=sys.stderr, all_threads=True)
+
     httpd = BoundedThreadingHTTPServer(
         (host, port),
         make_handler(runtime, api_key=api_key, rate_limit_rps=rate_limit_rps,

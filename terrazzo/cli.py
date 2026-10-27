@@ -345,17 +345,26 @@ def cmd_bench(args) -> int:
 
 
 def apply_agent_profile(args) -> None:
-    """Agent traffic tuning: many sessions share one long system prompt.
+    """Tuned FIFO presets.
 
-    Measured (16 sessions, 2.5k shared prefix, M1 Max): default 8 slots + wave
-    admission gives TTFT p50 ~8-11 s; 16 in one wave + pre-registered prefix gives
-    p50 ~2.2 s and ~95 tok/s aggregate. Values are only bumped when still at the
-    generic defaults, so explicit user flags win.
+    * ``agent``: many sessions share one long prefix. 16 slots + pre-registration
+      measured best for shared-prefix traffic.
+    * ``mixed``: shared + unique prefixes. A FIFO cap of 4 beat uncapped FIFO and
+      cost-aware ordering on aggregate throughput/latency/memory in the cap sweep;
+      treat it as a starting point, not a universal optimum.
+    Explicit user flags win; only the generic default (8) is changed.
     """
-    if getattr(args, "profile", None) != "agent":
-        return
+    profile = getattr(args, "profile", None)
     import os
 
+    if profile == "mixed":
+        if getattr(args, "max_num_seqs", 8) == 8:
+            args.max_num_seqs = 4
+        os.environ.setdefault("TERRAZZO_ADMIT_BATCH", "4")
+        os.environ.setdefault("TERRAZZO_ADMIT_WAIT", "4")
+        return
+    if profile != "agent":
+        return
     if getattr(args, "max_num_seqs", 8) == 8:
         args.max_num_seqs = 16
     os.environ.setdefault("TERRAZZO_ADMIT_BATCH", "16")
@@ -856,8 +865,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="MLX memory cap in MB (default: 70 percent of RAM)")
     s.add_argument("--no-thinking", action="store_true", dest="no_thinking",
                    help="disable Qwen3 thinking in chat-template requests")
-    s.add_argument("--profile", default="default", choices=["default", "agent"],
-                   help="agent: 16 batch slots + wave-free admission (16 concurrent sessions)")
+    s.add_argument("--profile", default="default",
+                   choices=["default", "agent", "mixed"],
+                   help="agent: 16 slots for shared-prefix traffic; mixed: 4 slots for "
+                        "shared+unique traffic (tuned FIFO starting points)")
     s.add_argument("--system", default=None, help="system prompt to register as a shared prefix")
     s.add_argument("--system-file", default=None, dest="system_file")
     s.set_defaults(func=cmd_serve)

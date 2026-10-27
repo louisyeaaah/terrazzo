@@ -219,14 +219,20 @@ session starts).
 | B cache+FIFO (16 slots) | 11.6 | 40.89 s | 77.51 s | 88.10 s | 88.20 s | 30.3 GB | 44,784 | 16 |
 | D cache+cost (16 slots) | 12.6 | 40.98 s | 71.76 s | 81.11 s | 81.11 s | 19.5 GB | 44,784 | 16 |
 
-**A simple FIFO cap at 4 beats cost ordering on every metric here**: throughput 14.5 vs
-12.6 tok/s, p95 TTFT 67.4 vs 71.8 s, p95 completion 70.7 vs 81.1 s, peak memory 18.5 vs
-19.5 GB. D still beats uncapped FIFO, but the cap baseline explains that improvement
+**A simple FIFO cap at 4 beats cost ordering on aggregate metrics here**: throughput 14.5
+vs 12.6 tok/s, p95 TTFT 67.4 vs 71.8 s, p95 completion 70.7 vs 81.1 s, peak memory 18.5
+vs 19.5 GB. D still beats uncapped FIFO, but the cap baseline explains that improvement
 without a cost model.
 
-Note the KV peak: B and D both peak at 44,784 tokens, while cap4 peaks at 25,904. D's
-lower MLX memory therefore cannot be explained by fewer live KV blocks; it is more likely
-transient prefill/copy buffers. Cap4 reduces both KV residency and transient memory.
+This does not mean ordering has no value: in continuous arrivals cost lowered the shared
+p50 to 14.7 s vs 35.0 s for cap4, i.e. it changes **service priority**. That trade-off is
+only useful if serving cache-hit requests first is an explicit product requirement; the
+current goal does not require it.
+
+B and D report the same *logical* KV token peak (44,784), while cap4 peaks at 25,904.
+Logical KV accounting therefore cannot explain D's lower MLX memory. Physical residency,
+padding, copy buffers and allocator retention were not measured; "transient prefill/copy
+buffers" is a hypothesis, not a demonstrated cause.
 
 ### 9.2 Continuous arrivals (mixed, 16 sessions, 500 ms stagger)
 
@@ -244,11 +250,12 @@ window (both Terrazzo arms share it) or by different prompts (same workload gene
 
 1. Cache-hit information changes admission order: with the cost arm the first prefill wave
    contained cached requests (`cached=2544, uncached=31`), while FIFO admitted a mix.
-2. That changes the mix of active work (small-suffix requests first), which lowers transient
-   prefill/copy memory; MLX peak drops even though the peak KV block count is identical to B.
-3. **But the same memory/latency effect is obtained more simply by capping FIFO concurrency
-   at 4.** So the current evidence supports "ordering can act as a soft concurrency
-   control", not "cost ordering has unique value."
+2. That changes the mix of active work (small-suffix requests first), and MLX peak drops
+   even though the *logical* peak KV block count is identical to B.
+3. **But a simpler FIFO cap at 4 achieves better aggregate throughput, p95 and memory.**
+   The data therefore does not support "cost ordering has aggregate value over tuned
+   concurrency"; it only supports "ordering changes service priority" (see shared p50).
+   The memory mechanism remains unverified beyond logical accounting.
 
 ### 9.4 Hang investigation
 
@@ -264,9 +271,85 @@ harness/repro notes; a full multi-arm 2-turn retry is still pending.
 
 - The right description is **"a cache/admission-scheduling joint experiment"**, not a
   co-optimized engine.
-- Cost ordering has **not shown value beyond a simple FIFO concurrency cap** on the
-  measured workloads; the cap baseline should be the default comparison in any future
-  claim.
-- Do not pursue physical sharing or a custom executor from this evidence. If work
-  continues, start from concurrency/cache-budget tuning and only add cache-aware ordering
-  if it beats a tuned FIFO cap on multiple workloads and arrival patterns.
+- Tuned FIFO concurrency is the current default; cost ordering remains an experimental
+  option. What was disproved is "cost ordering beats simple concurrency control on
+  aggregate metrics", not the entire value of ordering.
+- cap4 is the winner **in this dataset only**. Tuning and validation workloads must be
+  separated; compare a pre-chosen fixed cap against a per-workload oracle cap.
+- Do not pursue physical sharing or a custom executor from this evidence.
+
+---
+
+## 10. Next-step guardrails (after review)
+
+- **Product path:** simple, explainable concurrency limits; tuned FIFO is the default.
+  Cost ordering stays behind an experimental flag.
+- **Reliability path:** capture thread stacks and request stages on timeout/hang, then
+  rerun the multi-arm 16×2 sequence that produced the original hang. Four isolated
+  successes do not replace that reproduction condition.
+- **Research path:** first measure whether the best cap changes enough across workloads
+  that one fixed cap cannot serve them. Only then evaluate automatic cap selection. The
+  final answer is allowed to remain "FIFO".
+- **Comparison rule:** report both a pre-selected fixed cap and a per-workload oracle cap;
+  do not use the same data to pick and validate the winner.
+
+---
+
+## 11. Cap sweep: one fixed cap is not optimal for all workloads
+
+External load was ~6.2 during this sweep, so only relative comparisons within the table are
+meaningful. All arms are cache+FIFO, 16 sessions, 1 turn, 50 ms settle, true usage tokens.
+
+### 11.1 Mixed traffic (8 shared + 8 unique prefixes)
+
+| cap | tok/s | TTFT p50 | TTFT p95 | p95 total | peak MLX |
+|---:|---:|---:|---:|---:|---:|
+| 2 | 11.2 | 63.19 s | 89.02 s | 91.40 s | 9.6 GB |
+| **4** | **11.7** | **40.24 s** | **75.19 s** | **87.49 s** | 11.6 GB |
+| 6 | 9.8 | 52.63 s | 98.96 s | 104.58 s | 17.3 GB |
+| 8 | 8.1 | 71.79 s | 115.48 s | 125.85 s | 29.3 GB |
+| 12 | 7.4 | 89.42 s | 126.90 s | 137.91 s | 29.4 GB |
+| 16 | 7.3 | 72.13 s | 124.16 s | 140.63 s | 25.7 GB |
+
+### 11.2 Shared prefix (16 sessions, same 2k prefix)
+
+| cap | tok/s | TTFT p50 | TTFT p95 | p95 total | peak MLX |
+|---:|---:|---:|---:|---:|---:|
+| 2 | 34.7 | 15.16 s | 26.10 s | 29.51 s | 3.9 GB |
+| 4 | 38.7 | 14.18 s | 20.71 s | 26.44 s | 4.9 GB |
+| 6 | 38.7 | 11.01 s | 20.47 s | 26.43 s | 5.7 GB |
+| 8 | 38.0 | 15.11 s | 15.61 s | 26.93 s | 6.6 GB |
+| 12 | 43.1 | 3.29 s | 17.70 s | 23.74 s | 8.2 GB |
+| **16** | **52.4** | 4.00 s | **4.79 s** | **19.53 s** | 9.9 GB |
+
+### 11.3 Fixed cap vs per-workload oracle
+
+- Mixed: oracle cap=4; a pre-chosen cap4 matches it.
+- Shared: oracle cap=16; fixed cap4 loses **26% throughput** (38.7 vs 52.4) and has
+  much worse p95 (20.7 vs 4.79 s).
+- Continuous mixed (500 ms stagger, earlier lower-load run): cap4 13.3 tok/s vs cap16
+  11.2, so cap4 also wins there.
+- Long 4×1: cap4 and cap16 are identical (both ~22 tok/s), because there are only 4
+  sessions.
+
+**Conclusion:** the best cap varies enough (4 vs 16) that one fixed value cannot serve all
+workloads. This makes automatic cap selection a legitimate research question, but the
+current product answer is two explicit presets: `--profile agent` (16) and
+`--profile mixed` (4). Do not market a single magic cap.
+
+## 12. Reliability status (stack dump + retry)
+
+Added:
+
+- `TERRAZZO_STACK_DUMP=1` registers SIGUSR1 in the server; `kill -USR1 <pid>` dumps every
+  thread stack to stderr/log.
+- `request_stages` in `/stats`: added / first_token / finished / aborted / failed counts.
+- `scripts/watch_health.py`: polls `/health`, on failure sends SIGUSR1 and prints stats/log.
+
+Retry status: four isolated 16×2 shared runs completed in 21.7–22.4 s (~94 tok/s). The
+attempted multi-arm retry ran under load ~6.2; the no-cache arm A remained healthy
+(`/health` 200) and made progress (17 first tokens, 704/2048 decode tokens) but was far too
+slow to finish in a reasonable window, so it was stopped before B/C/D. No hang was
+reproduced and no stack was captured. The original one-off hang remains an **open**
+reliability question; the next retry should run when external load is low and keep the
+full A/B/C/D 2-turn sequence.

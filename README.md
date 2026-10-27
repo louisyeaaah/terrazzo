@@ -129,18 +129,28 @@ co-optimization. The honest summary:
 
 - Mixed 16-session traffic, single turn: cost ordering beat uncapped FIFO (p95 TTFT
   57–70 s vs 74–81 s; peak memory 18–20 GB vs 30–41 GB).
-- **But a plain FIFO concurrency cap at 4 slots did better still**: 14.5 vs 12.6 tok/s,
-  p95 TTFT 67.4 vs 71.8 s, peak 18.5 vs 19.5 GB. Continuous arrivals showed the same
-  ordering: cap4 best, cost ordering second, uncapped FIFO last.
-- Peak KV block count was identical between FIFO-16 and cost-ordering (44,784 tokens):
-  the memory difference is transient prefill/copy pressure, not fewer live KV blocks.
+- **A plain FIFO concurrency cap at 4 slots did better on aggregate metrics**: 14.5 vs
+  12.6 tok/s, p95 TTFT 67.4 vs 71.8 s, peak 18.5 vs 19.5 GB. Continuous arrivals showed
+  the same overall ordering (cap4 best, cost second, uncapped FIFO last), but cost did
+  change service priority: shared-prefix p50 14.7 s vs 35.0 s for cap4. That trade-off
+  only matters if the product goal is "serve cache-hit requests first"; our current goal
+  does not require it.
+- FIFO-16 and cost-ordering had the same *logical* KV token count (44,784). That only
+  shows logical KV accounting cannot explain the memory difference; physical residency,
+  padding, copies and allocator retention were not measured, so the "transient
+  prefill/copy buffers" explanation is still a hypothesis.
+- cap4 is the winner **in this dataset**, not a universal default. Tuning and validation
+  workloads must be separated; future comparisons should report both a pre-chosen fixed
+  cap and the per-workload oracle cap.
 - Shared-only traffic, 8 sessions × 2 turns and 8k prompts showed no ordering benefit;
   prefix caching itself remains the dominant lever.
 
 The scheduler still cannot control the executor's prefill budget (16.4k scheduled vs 41.2k
 actual prompt tokens, 2.5×), so the only controllable mechanism is admission/order.
 **Conclusion: the right label is "cache/admission-scheduling joint experiment", not
-"co-optimized engine"; cost ordering has not yet shown value beyond a tuned FIFO cap.**
+"co-optimized engine". Tuned FIFO concurrency is the current default; cost ordering stays
+as an experimental option. What was disproved is "cost ordering beats simple concurrency
+control on aggregate metrics", not the entire value of ordering.**
 Full protocol, cap scan, continuous-arrival numbers and the unresolved 16×2 hang:
 [docs/CO-DESIGN.md](docs/CO-DESIGN.md).
 
@@ -235,7 +245,7 @@ BENCHMARKS.md      every measurement, including the ones that lost
 ## Tests and benchmarks
 
 ```bash
-python -m unittest discover -s tests                  # core suite (239 tests, 1 skipped)
+python -m unittest discover -s tests                  # core suite (240 tests, 1 skipped)
 python -m unittest discover -s experiments/tests -v   # experimental kernels (31 tests)
 python scripts/ci_core_tests.py                       # pure-Python subset with MLX blocked
 bash bench/head_to_head.sh                            # Ollama head-to-head

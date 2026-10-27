@@ -119,15 +119,25 @@ KV 字节安排接纳顺序**（替代 FIFO）。这是有限的 cache/admission
 
 - 16 会话混合流量、单轮：cost 排序优于不设上限的 FIFO（p95 TTFT 57–70 s vs 74–81 s；
   峰值内存 18–20 GB vs 30–41 GB）。
-- **但普通 FIFO 把并发限制到 4 反而更好**：14.5 vs 12.6 tok/s，p95 TTFT 67.4 vs 71.8 s，
-  峰值 18.5 vs 19.5 GB。持续到达测试也是同样排序：cap4 最好，cost 第二，FIFO-16 最后。
-- FIFO-16 与 cost 排序的峰值 KV block 数相同（44,784 tokens）：内存下降来自瞬时
-  prefill/copy 压力，而不是更少的存活 KV block。
+- **普通 FIFO 把并发限制到 4 在整体指标上更好**：14.5 vs 12.6 tok/s，p95 TTFT 67.4 vs
+  71.8 s，峰值 18.5 vs 19.5 GB。持续到达测试整体排序相同（cap4 最好、cost 第二、
+  FIFO-16 最后），但 cost 确实改变了服务优先级：shared 前缀 p50 14.7 s vs cap4 的
+  35.0 s。只有产品目标明确要求“优先服务缓存命中请求”时，这个取舍才值得；当前目标
+  没有这个要求。
+- FIFO-16 与 cost 排序的**逻辑** KV token 数相同（44,784）。这只说明逻辑 KV 计数无法解释
+  内存差异；实际驻留、padding、复制和分配器保留内存都没有测，因此“瞬时 prefill/copy
+  缓冲导致下降”仍然只是假设。
+- cap4 只是**本组数据**的赢家，不是通用默认值。跨 workload 的 cap 扫描显示最佳值会变：
+  mixed 流量偏好约 4 槽，而 16 会话共享前缀偏好 16 槽（52.4 vs 38.7 tok/s）。因此一个固定 cap
+  无法同时最优；调参数据和验证数据必须分开，未来对比要同时报告预选固定 cap 与每负载 oracle cap。
+- 产品路径：tuned FIFO 预设 `--profile agent`（16 槽，共享前缀）与 `--profile mixed`
+  （4 槽，shared+unique）是当前默认；cost 排序保留实验选项。自动选 cap 是研究问题，尚未实现。
 - 全共享前缀、8 会话 × 2 轮、8k 长提示都没有排序收益；前缀缓存本身仍是最大杠杆。
 
 调度器仍不能控制执行器的 prefill 预算（调度 16.4k vs 实际 41.2k prompt tokens，2.5×），
-所以唯一可控的是接纳/顺序。**结论：准确说法是“缓存/接纳调度的联合实验”，不是
-“协同优化引擎”；cost 排序目前没有证明比调好的 FIFO 并发上限更有价值。**
+所以唯一可控的是接纳/顺序。**结论：准确说法是“缓存/接纳调度的联合实验”，不是“协同优化引擎”。tuned FIFO 并发上限是
+当前默认方案，cost 排序保留为实验选项。被证伪的是“cost 排序在整体指标上优于简单并发控制”，
+不是排序的全部价值。**
 完整协议、cap 扫描、持续到达数字和未复现的 16×2 挂起：[docs/CO-DESIGN.md](docs/CO-DESIGN.md)。
 
 ## 快速开始
@@ -219,7 +229,7 @@ BENCHMARKS.md      所有测量数据，包括输掉的那些
 ## 测试与基准
 
 ```bash
-python -m unittest discover -s tests                  # 核心套件（239 个测试，1 skipped）
+python -m unittest discover -s tests                  # 核心套件（240 个测试，1 skipped）
 python -m unittest discover -s experiments/tests -v   # 实验内核（31 个测试）
 python scripts/ci_core_tests.py                       # MLX 被 block 的纯 Python 子集
 bash bench/head_to_head.sh                            # 与 Ollama 的 head-to-head

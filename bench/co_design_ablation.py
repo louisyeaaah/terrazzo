@@ -123,9 +123,15 @@ ARMS = {
           "flags": ["--no-prefix-cache", "--scheduler-policy", "cost"], "prewarm": False},
     "d": {"label": "D: cache + cost-aware",
           "flags": ["--prefix-reuse", "auto", "--scheduler-policy", "cost"], "prewarm": True},
+    "b_cap2": {"label": "B-cap2: cache+FIFO, 2 slots", "profile": "default",
+               "flags": ["--prefix-reuse", "always", "--scheduler-policy", "fifo",
+                         "--max-num-seqs", "2"], "prewarm": True},
     "b_cap4": {"label": "B-cap4: cache+FIFO, 4 slots", "profile": "default",
                "flags": ["--prefix-reuse", "always", "--scheduler-policy", "fifo",
                          "--max-num-seqs", "4"], "prewarm": True},
+    "b_cap6": {"label": "B-cap6: cache+FIFO, 6 slots", "profile": "default",
+               "flags": ["--prefix-reuse", "always", "--scheduler-policy", "fifo",
+                         "--max-num-seqs", "6"], "prewarm": True},
     "b_cap8": {"label": "B-cap8: cache+FIFO, 8 slots", "profile": "default",
                "flags": ["--prefix-reuse", "always", "--scheduler-policy", "fifo",
                          "--max-num-seqs", "8"], "prewarm": True},
@@ -166,6 +172,7 @@ def start_server(arm: str, model: str, port: int, system_text: str | None,
         # let all 16 agent requests arrive before admission, otherwise the cost
         # scheduler only sees whatever the HTTP race admitted first
         env.setdefault("TERRAZZO_ADMIT_SETTLE_MS", "50")
+        env.setdefault("TERRAZZO_STACK_DUMP", "1")
         request_model = "terrazzo"
     log = open(log_path, "wb")
     proc = subprocess.Popen(cmd, cwd=str(ROOT), stdout=log, stderr=subprocess.STDOUT,
@@ -304,6 +311,7 @@ def run_workload(srv: dict, systems: list[str], turns: int, max_tokens: int,
         "prefix_cache": stats1.get("prefix_cache"),
         "cost_model": stats1.get("cost_model"),
         "scheduler_policy": stats1.get("scheduler_policy"),
+        "request_stages": stats1.get("request_stages"),
         "peak_running": stats1.get("peak_running"),
         "peak_waiting": stats1.get("peak_waiting"),
         "peak_kv_tokens": stats1.get("peak_kv_tokens"),

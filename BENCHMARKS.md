@@ -1848,7 +1848,7 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
   cache 方法是否存在，失败给出明确错误；`TERRAZZO_SKIP_MLX_LM_CHECK=1` 仅用于试验新版本。
 - `docs/COMPATIBILITY.md` 记录测试矩阵与不支持的平台。
 
-**当前测试**：核心 239 个（1 skipped）+ 实验内核 31 个；CI 两个主 job + 手动模型 E2E job（见 workflow）。
+**当前测试**：核心 240 个（1 skipped）+ 实验内核 31 个；CI 两个主 job + 手动模型 E2E job（见 workflow）。
 
 ## 45. Tools / function calling（2026-10-27）
 
@@ -1874,7 +1874,7 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
 
 关键修复：带 tools 时默认 `enable_thinking=false`（原来 `<think>` 把 token 预算吃光，
 128 token 内根本到不了 `<tool_call>`）；OpenAI 报文中 assistant `content:null` 需规范化为空串，
-否则 Jinja 模板抛 `'NoneType' is not iterable`。全套 **239 个核心测试 OK（1 skipped）+ 31 个实验内核测试**（§47 后）。
+否则 Jinja 模板抛 `'NoneType' is not iterable`。全套 **240 个核心测试 OK（1 skipped）+ 31 个实验内核测试**（§47 后）。
 
 ## 47. 残余风险修复（2026-10-27）
 
@@ -1900,8 +1900,8 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
 - Ollama 原生模式默认 `think=false`：qwen3 在 Ollama 默认开启思考会把 content 吃空、多轮历史失真。
 
 **修复后验证（commit `fbbdcb0`）**：
-- 本地：核心 **239 tests（1 skipped）**、实验内核 **31 tests（3 skipped）**、纯 Python（MLX blocked）
-  **142 run / 0 fail / 9 skip**。
+- 本地：核心 **240 tests（1 skipped）**、实验内核 **31 tests（3 skipped）**、纯 Python（MLX blocked）
+  **143 run / 0 fail / 9 skip**。
 - CI（[run 40426254576](https://github.com/louisyeaaah/terrazzo/actions/runs/40426254576)）：
   `Core tests (pure Python, MLX blocked)` ✅、`macOS (MLX) import + tests`（含 Metal kernel 与
   experiments）✅；`Model E2E` 仅在手动 `workflow_dispatch` 时运行（本次按预期 skipped）。
@@ -2066,10 +2066,13 @@ Phase 1 的 D vs B 收益有一个更简单的解释：cost 排序可能只是�
 | B（FIFO，16 槽） | 11.6 | 40.89 s | 77.51 s | 88.10 s | 88.20 s | 30.3 GB | 44,784 | 16 |
 | D（cost，16 槽） | 12.6 | 40.98 s | 71.76 s | 81.11 s | 81.11 s | 19.5 GB | 44,784 | 16 |
 
-**简单 FIFO cap4 在所有指标上优于 cost 排序**；D 比 FIFO-16 好，但 cap4 用更简单的机制
-拿到了更好的吞吐、更低的 p95 和更低内存。B 与 D 的 peak KV tokens 相同（44,784），说明
-D 的内存下降不是来自更少的存活 KV block，而更像瞬时 prefill/copy 压力；cap4 则同时降低
-KV 驻留。
+**简单 FIFO cap4 在整体指标上优于 cost 排序**；D 比 FIFO-16 好，但 cap4 用更简单的机制
+拿到了更好的吞吐、更低的 p95 和更低内存。不过 cost 改变了服务优先级：持续到达中 shared
+p50 为 14.7 s，cap4 为 35.0 s；只有产品明确要求“优先服务缓存命中请求”时这个取舍才值得。
+
+B 与 D 的**逻辑** peak KV tokens 相同（44,784），而 cap4 为 25,904。这只能说明逻辑 KV
+计数无法解释 D 的内存差异；实际驻留、padding、复制和分配器保留内存都未测量，因此
+“瞬时 prefill/copy 缓冲”仍是待验证假设。cap4 只是本组数据的赢家，不是通用默认。
 
 ### 50.2 持续到达（mixed，500ms stagger）
 
@@ -2092,7 +2095,55 @@ cost 排序优于简单限流。
 
 - 准确称呼：**缓存/接纳调度的联合实验**（limited cache-scheduler co-design），不是
   co-optimized engine。
-- **没有证据表明 cost 排序比调好的 FIFO 并发上限更有价值**；默认 baseline 应该包含
-  cap 扫描。
-- 不据此重写执行器或做物理共享；后续若继续，先在多个 workload/到达模式下让
-  cache-aware 排序击败 tuned FIFO cap，再谈新机制。
+- **被证伪的是“cost 排序在整体指标上优于简单并发控制”，不是排序的全部价值**；
+  tuned FIFO 并发是当前默认，cost 排序保留为实验选项。
+- cap4 只是本组数据赢家。调参数据与验证数据要分开；未来对比应同时报告预选固定 cap 与
+  每负载 oracle cap，不要求 cache-aware 排序赢过 cap。
+- 不据此重写执行器或做物理共享；后续先研究不同负载的最佳 cap 是否差异足够大，
+  再决定是否需要自动并发选择（允许最终答案仍是 FIFO）。
+
+## 51. Cap 扫描与「固定 cap vs oracle」（2026-10-27）
+
+外部 load ~6.2，绝对数字整体变慢，只做表内相对比较。全部 cache+FIFO、16 会话、1 turn、
+50ms settle、真 usage tokens。
+
+### 51.1 mixed（8 shared + 8 unique）
+
+| cap | tok/s | TTFT p50 | TTFT p95 | p95 total | peak MLX |
+|---:|---:|---:|---:|---:|---:|
+| 2 | 11.2 | 63.19 s | 89.02 s | 91.40 s | 9.6 GB |
+| **4** | **11.7** | **40.24 s** | **75.19 s** | **87.49 s** | 11.6 GB |
+| 6 | 9.8 | 52.63 s | 98.96 s | 104.58 s | 17.3 GB |
+| 8 | 8.1 | 71.79 s | 115.48 s | 125.85 s | 29.3 GB |
+| 12 | 7.4 | 89.42 s | 126.90 s | 137.91 s | 29.4 GB |
+| 16 | 7.3 | 72.13 s | 124.16 s | 140.63 s | 25.7 GB |
+
+### 51.2 shared（16 会话共享 2k 前缀）
+
+| cap | tok/s | TTFT p50 | TTFT p95 | p95 total | peak MLX |
+|---:|---:|---:|---:|---:|---:|
+| 2 | 34.7 | 15.16 s | 26.10 s | 29.51 s | 3.9 GB |
+| 4 | 38.7 | 14.18 s | 20.71 s | 26.44 s | 4.9 GB |
+| 6 | 38.7 | 11.01 s | 20.47 s | 26.43 s | 5.7 GB |
+| 8 | 38.0 | 15.11 s | 15.61 s | 26.93 s | 6.6 GB |
+| 12 | 43.1 | 3.29 s | 17.70 s | 23.74 s | 8.2 GB |
+| **16** | **52.4** | 4.00 s | **4.79 s** | **19.53 s** | 9.9 GB |
+
+### 51.3 固定 cap vs oracle
+
+- mixed：oracle cap=4；预选 cap4 正好命中。
+- shared：oracle cap=16；预选 cap4 吞吐损失 26%（38.7 vs 52.4），p95 20.7 vs 4.79 s。
+- 持续 mixed（500ms stagger，较早低负载 run）：cap4 13.3 vs cap16 11.2，cap4 仍赢。
+- long 4×1：cap4 与 cap16 相同（~22 tok/s），因为只有 4 个会话。
+
+**结论：最佳 cap 随 workload 明显变化（4 vs 16），一个固定值无法同时最优。** 当前产品答案
+是两个显式预设：`--profile agent`（16，共享前缀）与 `--profile mixed`（4，shared+unique）；
+自动选 cap 是研究问题，不宣称已完成。
+
+### 51.4 可靠性现场
+
+新增 `TERRAZZO_STACK_DUMP=1`（SIGUSR1 打印所有线程栈）、`/stats.request_stages`（added/
+first_token/finished/aborted/failed）以及 `scripts/watch_health.py`。四次隔离的 16×2 shared
+运行均完成；multi-arm 重试在 load ~6.2 下 arm A 健康但过慢（17 first tokens、704/2048
+decode 后停止），未复现挂起、未抓到栈。原挂起仍是 open issue，下次需在低负载下跑完整
+A/B/C/D 2-turn 序列。
