@@ -1899,5 +1899,9 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
   说明新版 bench 对 Ollama 的两种接口都能拿到真 token 数，跨后端对比不再依赖块计数。
 - Ollama 原生模式默认 `think=false`：qwen3 在 Ollama 默认开启思考会把 content 吃空、多轮历史失真。
 
-修复后全量测试：核心 226（1 skipped）+ 实验 31；CI 双 job 绿（Linux 纯 Python / macOS MLX +
-Metal kernel + experiments），手动 `workflow_dispatch` 可跑模型 E2E。
+**修复后验证（commit `fbbdcb0`）**：
+- 本地：核心 **226 tests（1 skipped）**、实验内核 **31 tests（3 skipped）**、纯 Python（MLX blocked）
+  **129 run / 0 fail / 8 skip**。
+- CI（[run 40426254576](https://github.com/louisyeaaah/terrazzo/actions/runs/40426254576)）：
+  `Core tests (pure Python, MLX blocked)` ✅、`macOS (MLX) import + tests`（含 Metal kernel 与
+  experiments）✅；`Model E2E` 仅在手动 `workflow_dispatch` 时运行（本次按预期 skipped）。
