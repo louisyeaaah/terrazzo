@@ -37,24 +37,78 @@ Terrazzo 是面向 macOS / Apple Silicon 的推理运行时与服务端，基于
   并发/排队上限、请求 deadline、worker 卡死 watchdog（`/stats.worker`）、请求取消、结构化
   `/stats`、可选 `--profile agent`。
 
-## 为什么选 Terrazzo（诚实定位）
+## 性能实测（2026-10-27）
 
-以下数字均在同一台 Apple M1 Max（24 核 GPU / 64GB）上测量，对比 **Ollama 0.34.4** 的
-`qwen3:4b`（GGUF Q4_K_M）与 `terrazzo` 服务的 `mlx-community/Qwen3-4B-4bit`。完整口径与
-负结果见 [BENCHMARKS.md](BENCHMARKS.md) 和 [COMPARISON.zh.md](docs/COMPARISON.zh.md)。
+环境：Apple M1 Max（24 核 GPU / 64GB）、macOS 26.6.2、load average 2–4、`terrazzo` 0.3.0
+（commit `8d00b0c`）、MLX 0.32.4 / mlx-lm 0.31.3。Ollama 0.34.4 + `qwen3:4b`
+（GGUF Q4_K_M）；vLLM 0.32.0 + vllm-metal（`--max-model-len 4096
+--gpu-memory-utilization 0.2`）。同一时间只跑一个服务、模型已热身、temperature 0。
+token 数全部来自服务端计数（OpenAI 风格用 `usage`，Ollama 原生接口用 `eval_count`），
+不用 SSE 块计数。
 
-| 维度 | Terrazzo | Ollama | 说明 |
-|---|---:|---:|---|
-| 短上下文 decode | **100.7 tok/s** | 48.4 tok/s | 2.08×；MLX 4-bit vs GGUF Q4_K_M |
-| 预注册前缀的首请求 | **0.169 s** | 0.811 s | Ollama 要等首请求结束才有缓存 |
-| 8k 预注册前缀冷启动 | **0.406 s** | 23.7 s（默认）/ 40.4 s | 预注册是关键 |
-| 纯前缀复用（同提示） | 0.076 s | **0.033 s** | 这一项 Ollama 更快 |
-| 冷 prefill（无前缀） | 1.040 s | **0.811 s** | 这一项 Ollama 更快 |
-| 4 并发默认配置聚合 | **54–58 tok/s** | 41.8 tok/s | Ollama 调到 `num_parallel=4` 会反超 |
+### 短提示 decode（128 token）
 
-Terrazzo **不是**对 Ollama 的"质变"：decode 约 2×、首请求前缀处理明显更好，但冷 prefill
-和纯 warm 复用仍输给 Ollama。它真正的定位是"Mac 上的 agent 推理网关"：长系统提示预注册、
-块粒度前缀共享、结构化输出、背压/取消/可观测。
+| 引擎 | decode tok/s | 相对 Ollama |
+|---|---:|---:|
+| terrazzo（MLX 4-bit） | **101.1** | **1.51×** |
+| Ollama qwen3:4b（num_ctx 8192） | 67.0 | 1.00× |
+
+### Agent 负载：2.6k 共享系统提示、2 轮 × 64 token
+
+| 后端 / 配置 | 会话数 | 聚合 tok/s | TTFT p50 | TTFT p95 |
+|---|---:|---:|---:|---:|
+| terrazzo（`--profile agent` + `/v1/prewarm`） | 1 | **59.4** | **0.29 s** | 0.37 s |
+| terrazzo | 4 | **74.1** | **0.60 s** | 1.44 s |
+| terrazzo | 16 | 88.7 | 2.56 s | 3.49 s |
+| Ollama 0.34.4（原生 `/api/chat`） | 1 | 19.6 | 2.21 s | 4.21 s |
+| Ollama | 4 | 32.6 | 5.16 s | 7.80 s |
+| Ollama | 16 | 40.6 | 22.39 s | 25.04 s |
+| vLLM-Metal | 1 | 43.5 | 0.19 s | 0.24 s |
+| vLLM-Metal | 4 | 43.8 | 3.25 s | 5.78 s |
+| vLLM-Metal | 16 | **122.1** | 1.57 s | 2.00 s |
+
+vLLM 单会话取第二次（稳态）运行；首次运行包含 kernel 热身（15.1 tok/s / 2.95 s）。
+4/16 会话均为稳态。
+
+### 长系统提示：预注册是差异点
+
+| 提示长度 | terrazzo 默认 cold TTFT | terrazzo 预注册 cold TTFT | Ollama cold TTFT | terrazzo warm-same | Ollama warm-same |
+|---|---:|---:|---:|---:|---:|
+| 2k | 4.37 s | **0.154 s** | 3.20 s | 0.153 s | **0.033 s** |
+| 4k | 8.91 s | **0.242 s** | 6.95 s | 0.125 s | **0.044 s** |
+| 8k | 19.87 s | **0.343 s** | 17.61 s | 0.081 s | **0.060 s** |
+
+同样提示下的 decode（预注册）：**82.8 / 74.6 / 57.0 tok/s**（2k/4k/8k），
+Ollama 为 45.2 / 43.6 / 38.0 tok/s。
+
+### 长上下文 decode（terrazzo）
+
+| 上下文 | decode tok/s | TTFT |
+|---:|---:|---:|
+| 1k | 87.2 | 1.95 s |
+| 2k | 76.3 | 3.93 s |
+| 4k | 70.7 | 8.36 s |
+| 8k | 57.2 | 19.21 s |
+
+### 内存
+
+`/stats` 的 MLX 峰值：1 会话 **3.9 GB**、4 会话 **4.9 GB**、16 会话 **9.85 GB**；
+进程 RSS 约 2.47 GB；2544-token 前缀快照约 375 MB。vLLM 的 KV 在其 engine 进程里，
+1.1 GB RSS 不可直接比较。
+
+### 实测后的诚实定位
+
+- **vs Ollama**：decode 1.5×；4/16 会话 agent 吞吐 1.8–2.2×；2k–8k 共享提示的
+  预注册首 token 快 10–50×。Ollama 仍在"不预注册的冷 prefill"和"纯 warm 前缀复用"上更快。
+- **vs vLLM-Metal**：terrazzo 单流（59.4 vs 43.5 tok/s）和 4 会话（74.1 vs 43.8）更强；
+  但 vLLM-Metal 的 16 会话批处理（122.1 vs 88.7）和 TTFT（1.57 vs 2.56 s）更好。
+  高并发下我们没有吞吐优势。
+- **总结**：terrazzo 的甜点是"单机、低/中并发、预注册长系统提示的 agent 流量"；
+  不是 vLLM 的规模化吞吐替代品，也不是 Ollama 冷 prefill/纯前缀复用的对手。
+
+复跑：`bench/compare_ollama.py`、`bench/h2h_long_prompts.py --only all`、
+`bench/agent_workload.py`（完整命令、原始数据与 caveat 见 [BENCHMARKS.md](BENCHMARKS.md) §48）。
+早先表格里的数字（如 2.08× decode）来自有负载的机器，已被本轮取代。
 
 ## 快速开始
 
@@ -83,9 +137,9 @@ terrazzo serve --model Qwen3-4B-4bit --profile agent --system-file system.txt
 terrazzo prewarm --base http://127.0.0.1:8080 --system-file system.txt
 ```
 
-16 会话 × 2 轮 × 64 token、2.5k 共享提示：**TTFT p50 2.28 s / p95 3.44 s，聚合 87.5 tok/s**
+16 会话 × 2 轮 × 64 token、2.6k 共享提示：**TTFT p50 2.56 s / p95 3.49 s，聚合 88.7 tok/s**
 （prewarm + `--profile agent`）；默认 8 槽配置下 p50 为 8–11 s。数字用服务端 usage 计 token、
-多轮喂真实回答，见 [BENCHMARKS.md §44/§46](BENCHMARKS.md)。
+多轮喂真实回答，见 [BENCHMARKS.md §48](BENCHMARKS.md)。
 
 ## CLI（Ollama 对照）
 

@@ -41,26 +41,83 @@ long shared system prompts — the shape of real agent traffic.
   deadlines, a worker hang watchdog (`/stats.worker`), request cancellation,
   structured `/stats`.
 
-## Why Terrazzo? (honest positioning)
+## Performance (measured 2026-10-27)
 
-All numbers below are measured on the same Apple M1 Max (24-core GPU, 64 GB) against
-**Ollama 0.34.4** running `qwen3:4b` (GGUF Q4_K_M), with `terrazzo` serving
-`mlx-community/Qwen3-4B-4bit`. Full methodology and negative results: [BENCHMARKS.md](BENCHMARKS.md),
-[COMPARISON.en.md](docs/COMPARISON.en.md).
+Environment: Apple M1 Max (24-core GPU, 64 GB), macOS 26.6.2, load average 2–4,
+`terrazzo` 0.3.0 (commit `8d00b0c`), MLX 0.32.4 / mlx-lm 0.31.3. Ollama 0.34.4 with
+`qwen3:4b` (GGUF Q4_K_M); vLLM 0.32.0 + vllm-metal, `--max-model-len 4096
+--gpu-memory-utilization 0.2`. One service at a time, warmed model, temperature 0.
+Token counts are server-reported (`usage` for OpenAI-style APIs, `eval_count` for the
+native Ollama API), never SSE chunk counts.
 
-| Dimension | Terrazzo | Ollama | Note |
-|---|---:|---:|---|
-| Decode, short context | **100.7 tok/s** | 48.4 tok/s | 2.08×; MLX 4-bit vs GGUF Q4_K_M |
-| First request, pre-registered prefix | **0.169 s** | 0.811 s | Ollama only caches after the first request |
-| 8k pre-registered prefix, cold | **0.406 s** | 23.7 s (default) / 40.4 s | pre-registration is the point |
-| Warm prefix reuse (same prompt) | 0.076 s | **0.033 s** | Ollama is faster here |
-| Cold prefill (no prefix) | 1.040 s | **0.811 s** | Ollama is faster here |
-| 4-way aggregate, default config | **54–58 tok/s** | 41.8 tok/s | Ollama gains at `num_parallel=4` |
+### Decode, short prompt (128 tokens)
 
-Terrazzo is **not** a qualitative leap over Ollama: decode is ~2× and first-request
-prefix handling is much better, but cold prefill and pure warm reuse still favor Ollama.
-The realistic product slot is "agent inference gateway on a Mac": pre-registered long
-system prompts, block-granular sharing, structured output, backpressure and observability.
+| engine | decode tok/s | vs Ollama |
+|---|---:|---:|
+| terrazzo (MLX 4-bit) | **101.1** | **1.51×** |
+| Ollama qwen3:4b (num_ctx 8192) | 67.0 | 1.00× |
+
+### Agent workload: 2.6k shared system prompt, 2 turns × 64 tokens
+
+| backend / config | sessions | aggregate tok/s | TTFT p50 | TTFT p95 |
+|---|---:|---:|---:|---:|
+| terrazzo (`--profile agent` + `/v1/prewarm`) | 1 | **59.4** | **0.29 s** | 0.37 s |
+| terrazzo | 4 | **74.1** | **0.60 s** | 1.44 s |
+| terrazzo | 16 | 88.7 | 2.56 s | 3.49 s |
+| Ollama 0.34.4 (native `/api/chat`) | 1 | 19.6 | 2.21 s | 4.21 s |
+| Ollama | 4 | 32.6 | 5.16 s | 7.80 s |
+| Ollama | 16 | 40.6 | 22.39 s | 25.04 s |
+| vLLM-Metal | 1 | 43.5 | 0.19 s | 0.24 s |
+| vLLM-Metal | 4 | 43.8 | 3.25 s | 5.78 s |
+| vLLM-Metal | 16 | **122.1** | 1.57 s | 2.00 s |
+
+vLLM's single-stream number is the second (steady-state) run: the first run after
+startup is 15.1 tok/s / 2.95 s because of kernel warm-up. Its 4/16-session rows are
+steady state as well.
+
+### Long system prompts: pre-registration is the differentiator
+
+| prompt | terrazzo default cold TTFT | terrazzo prewarmed cold TTFT | Ollama cold TTFT | terrazzo warm-same | Ollama warm-same |
+|---|---:|---:|---:|---:|---:|
+| 2k | 4.37 s | **0.154 s** | 3.20 s | 0.153 s | **0.033 s** |
+| 4k | 8.91 s | **0.242 s** | 6.95 s | 0.125 s | **0.044 s** |
+| 8k | 19.87 s | **0.343 s** | 17.61 s | 0.081 s | **0.060 s** |
+
+Decode rate on the same prompts (prewarmed): **82.8 / 74.6 / 57.0 tok/s** at 2k/4k/8k
+vs Ollama 45.2 / 43.6 / 38.0 tok/s.
+
+### Long-context decode (terrazzo)
+
+| context | decode tok/s | TTFT |
+|---:|---:|---:|
+| 1k | 87.2 | 1.95 s |
+| 2k | 76.3 | 3.93 s |
+| 4k | 70.7 | 8.36 s |
+| 8k | 57.2 | 19.21 s |
+
+### Memory
+
+Peak MLX memory from `/stats`: **3.9 GB** with 1 session, **4.9 GB** with 4,
+**9.85 GB** with 16 concurrent sessions; process RSS ~2.47 GB; a 2544-token prefix
+snapshot is ~375 MB. vLLM's KV cache lives in its engine process, so its 1.1 GB RSS
+is not a comparable number.
+
+### Honest positioning after these numbers
+
+- **vs Ollama**: decode 1.5×, agent throughput 1.8–2.2× at 4/16 sessions, and
+  prewarmed first-token latency 10–50× better on 2k–8k shared prompts. Ollama still
+  wins cold prefill *without* pre-registration and pure warm-prefix reuse.
+- **vs vLLM-Metal**: terrazzo is faster single-stream (59.4 vs 43.5 tok/s) and at
+  4 sessions (74.1 vs 43.8), but vLLM-Metal wins the 16-session batch (122.1 vs 88.7)
+  and its TTFT (1.57 vs 2.56 s). There is no throughput crown at high concurrency.
+- **Summary**: terrazzo's edge is agent-style traffic with a pre-registered long
+  system prompt at low/medium concurrency on one local model. It is not a drop-in
+  throughput replacement for vLLM at scale, and not faster than Ollama for cold
+  prefill or pure prefix reuse.
+
+Reproduce with `bench/compare_ollama.py`, `bench/h2h_long_prompts.py --only all`, and
+`bench/agent_workload.py` (exact commands, raw rows and caveats: [BENCHMARKS.md](BENCHMARKS.md) §48).
+Earlier table rows (e.g. 2.08× decode) came from loaded-machine runs and are superseded.
 
 ## Quickstart
 
@@ -89,10 +146,10 @@ terrazzo serve --model Qwen3-4B-4bit --profile agent --system-file system.txt
 terrazzo prewarm --base http://127.0.0.1:8080 --system-file system.txt
 ```
 
-16 concurrent sessions × 2 turns × 64 tokens with a 2.5k-token shared prompt:
-**TTFT p50 2.28 s / p95 3.44 s, 87.5 tok/s aggregate** (prewarm + `--profile agent`),
+16 concurrent sessions × 2 turns × 64 tokens with a 2.6k-token shared prompt:
+**TTFT p50 2.56 s / p95 3.49 s, 88.7 tok/s aggregate** (prewarm + `--profile agent`),
 versus 8–11 s p50 on the default 8-slot configuration. These are server-usage-counted
-tokens with real multi-turn answers; see [BENCHMARKS.md §44/§46](BENCHMARKS.md).
+tokens with real multi-turn answers; see [BENCHMARKS.md §48](BENCHMARKS.md).
 
 ## CLI (Ollama mapping)
 

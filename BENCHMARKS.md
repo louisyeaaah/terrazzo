@@ -1905,3 +1905,90 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
 - CI（[run 40426254576](https://github.com/louisyeaaah/terrazzo/actions/runs/40426254576)）：
   `Core tests (pure Python, MLX blocked)` ✅、`macOS (MLX) import + tests`（含 Metal kernel 与
   experiments）✅；`Model E2E` 仅在手动 `workflow_dispatch` 时运行（本次按预期 skipped）。
+
+## 48. 2026-10-27 全面性能复测（当前代码 + 真实 token 计数）
+
+环境：Apple M1 Max（24 核 GPU / 64GB）、macOS 26.6.2、load average 2–4（空闲窗口）、
+terrazzo `8d00b0c`（0.3.0）、MLX 0.32.4 / mlx-lm 0.31.3；Ollama 0.34.4 `qwen3:4b`
+（GGUF Q4_K_M）；vLLM 0.32.0 + vllm-metal（`--max-model-len 4096 --gpu-memory-utilization 0.2`）。
+方法论：同一时间只跑一个服务；模型先热身；temperature 0；token 数来自服务端
+（OpenAI `usage` / Ollama 原生 `eval_count`），不再使用 SSE 块计数。原始 JSON：
+`--out /tmp/perf_agent*.jsonl`；driver 脚本见本节末尾命令。
+
+### 48.1 decode（短提示，128 token）
+
+| engine | decode tok/s | 比值 |
+|---|---:|---:|
+| Ollama qwen3:4b（num_ctx 8192） | 67.0 | 1.00× |
+| **terrazzo（MLX 4-bit）** | **101.1** | **1.51×** |
+
+与 §39 的 48.4 tok/s 不同：那次测量时机器有外部负载；本轮为空闲窗口。两个数字都真实，
+但 **§48 是当前可复现口径**；README 已改用 1.51×。
+
+### 48.2 Agent 负载（2.6k 共享系统提示、2 轮 × 64 token，真 token）
+
+| 后端 / 配置 | 会话 | 聚合 tok/s | TTFT p50 | TTFT p95 |
+|---|---:|---:|---:|---:|
+| terrazzo（prewarm + `--profile agent`） | 1 | 59.4 | 0.291 | 0.370 |
+| terrazzo | 4 | 74.1 | 0.597 | 1.437 |
+| terrazzo | 16 | 88.7 | 2.560 | 3.488 |
+| Ollama 0.34.4（原生 `/api/chat`，think=false） | 1 | 19.6 | 2.213 | 4.207 |
+| Ollama | 4 | 32.6 | 5.157 | 7.798 |
+| Ollama | 16 | 40.6 | 22.393 | 25.036 |
+| vLLM-Metal（冷缓存） | 4 | 43.8 | 3.245 | 5.782 |
+| vLLM-Metal（冷缓存） | 16 | 123.6 | 1.456 | 1.772 |
+| vLLM-Metal（稳态） | 1 | 43.5 | 0.191 | 0.239 |
+| vLLM-Metal（稳态） | 16 | 122.1 | 1.571 | 2.001 |
+
+- vLLM 单会话首跑 15.1 tok/s / 2.95 s（kernel 热身），第二次才是 43.5 tok/s，已注明。
+- 16 会话下 vLLM 吞吐/时延优于 terrazzo；4 会话和单流 terrazzo 更好。
+- Ollama 16 会话 TTFT p50 22.4 s：默认 `num_parallel=1`，请求串行（这是它的默认配置问题，
+  不是能力上限）。
+
+### 48.3 长系统提示（2k/4k/8k）
+
+| 提示 | terrazzo 默认 cold | terrazzo 预注册 cold | Ollama cold | terrazzo warm-same | Ollama warm-same |
+|---|---:|---:|---:|---:|---:|
+| 2k | 4.372 s | **0.154 s** | 3.197 s | 0.153 s | **0.033 s** |
+| 4k | 8.906 s | **0.242 s** | 6.946 s | 0.125 s | **0.044 s** |
+| 8k | 19.869 s | **0.343 s** | 17.613 s | 0.081 s | **0.060 s** |
+
+同提示 decode（预注册）：82.8 / 74.6 / 57.0 tok/s；Ollama 45.2 / 43.6 / 38.0 tok/s。
+
+### 48.4 长上下文 decode（terrazzo，无前缀共享）
+
+| ctx | decode tok/s | TTFT |
+|---:|---:|---:|
+| 1000 | 87.2 | 1.95 s |
+| 2000 | 76.3 | 3.93 s |
+| 4000 | 70.7 | 8.36 s |
+| 8000 | 57.2 | 19.21 s |
+
+### 48.5 内存与服务开销
+
+- `/stats` MLX 峰值：1 会话 3.9 GB、4 会话 4.9 GB、16 会话 9.85 GB；进程 RSS ~2.47 GB；
+  2544-token 前缀快照 375 MB。
+- 服务端冒烟（真实模型、同一台机）：`/health` 6.6 ms、`/v1/models` 1.2 ms、
+  `/api/tags` 1.7 ms、`/api/ps` 1.5 ms、`/stats` 1.2 ms、`/api/version` 1.1 ms；
+  32-token OpenAI 非流式 0.87 s、Ollama 风格非流式 1.42 s、tool-call 请求 0.56 s。
+- vLLM RSS 1.1 GB 不可比（KV/模型在 engine 子进程，`bench` 只采样 API server pid）。
+
+### 48.6 复跑命令
+
+```bash
+MODEL=$PWD/../deepinfer-study/.hf-cache/hub/models--mlx-community--Qwen3-4B-4bit/snapshots/*/
+# decode
+python bench/compare_ollama.py --mlx-model "$MODEL" --ollama-model qwen3:4b
+# long prompts
+python bench/h2h_long_prompts.py --mlx-model "$MODEL" --ollama-model qwen3:4b \
+    --lengths 2000,4000,8000 --only all --out /tmp/h2h.jsonl
+# long-context decode
+python bench/long_context.py --model "$MODEL" --contexts 1000,2000,4000,8000 --tokens 128
+# agent workload (terrazzo with prewarm + --profile agent; Ollama native; vLLM)
+python bench/agent_workload.py --base http://127.0.0.1:PORT --model ... --sessions 16 \
+    --system-tokens 2000 --max-tokens 64 --stats http://127.0.0.1:PORT/stats
+# add --api ollama for native Ollama (eval_count) mode
+```
+
+**结论更新**：README 里的性能叙事以 §48 为准——对 Ollama 仍是 decode 1.5× / agent 1.8–2.2× /
+预注册首 token 10–50×；对 vLLM-Metal 只在单流与 4 会话占优，16 会话吞吐与时延落后。

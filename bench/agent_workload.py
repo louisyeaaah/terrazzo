@@ -329,7 +329,8 @@ def main() -> int:
         "server_decode_tokens": server_delta.get("decode_tokens"),
         "server_decode_tok_s": server_delta.get("decode_tok_s"),
         "ttft_p50_s": round(statistics.median(ttfts), 3),
-        "ttft_p95_s": round(sorted(ttfts)[max(0, int(len(ttfts) * 0.95) - 1)], 3),
+        "ttft_p95_s": round(sorted(ttfts)[
+            min(len(ttfts) - 1, max(0, round(0.95 * (len(ttfts) - 1))))], 3),
         "ttft_min_s": round(min(ttfts), 3),
         "peak_rss_mb": round(rss_peak, 0),
         "environment": env_before,

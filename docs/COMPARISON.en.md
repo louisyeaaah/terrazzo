@@ -1,3 +1,7 @@
+> **Update (2026-10-27):** fresh measurements (current code, quiet machine, true token counts)
+> are in the README performance section and BENCHMARKS §48; the tables below are from earlier
+> loaded-machine runs and are kept for historical context.
+
 # terrazzo vs Ollama and vLLM (English)
 
 > Data date: 2026-10-27 (current code v0.9 + prefix-cache fix).
