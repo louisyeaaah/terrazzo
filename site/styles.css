@@ -173,6 +173,23 @@ h2 { margin: 0; font-size: clamp(24px, 3vw, 32px); letter-spacing: -0.02em; line
 .feature h4 { margin: 0 0 4px; font-size: 15px; }
 .feature p { margin: 0; color: var(--muted); font-size: 13.5px; }
 
+/* timeline */
+.timeline { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; }
+.t-item {
+  position: relative; background: var(--card); border: 1px solid var(--line);
+  border-radius: 14px; padding: 17px 18px;
+}
+.t-item::before {
+  content: ""; position: absolute; left: 18px; top: 0; width: 34px; height: 2px;
+  background: var(--terra); border-radius: 2px;
+}
+.t-item .d { font-family: var(--mono); font-size: 11px; color: var(--terra); letter-spacing: 0.04em; margin-bottom: 5px; }
+.t-item h4 { margin: 0 0 5px; font-size: 14.5px; }
+.t-item p { margin: 0; color: var(--muted); font-size: 13px; }
+.t-item b { color: var(--ink); }
+@media (max-width: 900px) { .timeline { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 620px) { .timeline { grid-template-columns: 1fr; } }
+
 /* charts */
 .chart {
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);

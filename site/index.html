@@ -22,6 +22,7 @@
     </a>
     <nav class="site-nav" aria-label="Main">
       <a href="#numbers">Numbers</a>
+      <a href="#progress">Progress</a>
       <a href="#bench">Benchmarks</a>
       <a href="#long">Prefix cache</a>
       <a href="#positioning">Positioning</a>
@@ -97,6 +98,23 @@
         <span class="mono">qwen3:4b</span> (GGUF Q4_K_M). Absolute numbers move with machine load;
         the raw rows and environment metadata are in
         <a href="https://github.com/louisyeaaah/terrazzo/blob/main/BENCHMARKS.md">BENCHMARKS §48</a>.
+      </div>
+    </div>
+  </section>
+
+  <section id="progress" aria-labelledby="progress-title">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="progress-title">How it got here</h2>
+        <span class="note">from a scheduler port to a measured runtime</span>
+      </div>
+      <div class="timeline">
+        <div class="t-item"><div class="d">PORT</div><h4>DeepInfer semantics on MLX</h4><p>Paged block manager, chunked prefill, LCFS preemption and continuous batching moved from a datacenter design onto one Mac.</p></div>
+        <div class="t-item"><div class="d">SERVE</div><h4>Prefix cache + APIs</h4><p>Exact shared-prefix snapshots, <span class="mono">/v1/prewarm</span>, OpenAI + Ollama endpoints, CLI and Modelfile.</p></div>
+        <div class="t-item"><div class="d">AGENT FIX</div><h4>16-session TTFT</h4><p>Pre-registration + <span class="mono">--profile agent</span> cut p50 first-token latency from <b>8–11 s to 2.56 s</b> at 16 sessions.</p></div>
+        <div class="t-item"><div class="d">PRODUCTIZE</div><h4>v0.3.0 → Terrazzo</h4><p>Model store, <span class="mono">terrazzo</span> CLI, dual-language docs, pinned dependencies and head-to-head benchmarks.</p></div>
+        <div class="t-item"><div class="d">HARDEN</div><h4>Review-driven reliability</h4><p>Request deadlines, body/concurrency limits, HTTP hardening, hang watchdog, TLS, <b>226 core + 31 kernel tests</b>, Linux + macOS CI.</p></div>
+        <div class="t-item"><div class="d">MEASURE</div><h4>Honest re-measurement</h4><p>Quiet-machine rerun with true token counts: <b>1.51×</b> Ollama decode, <b>2.2×</b> agent throughput; vLLM-Metal leads at 16 sessions.</p></div>
       </div>
     </div>
   </section>

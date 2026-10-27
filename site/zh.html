@@ -22,6 +22,7 @@
     </a>
     <nav class="site-nav" aria-label="主导航">
       <a href="#numbers">数据</a>
+      <a href="#progress">进展</a>
       <a href="#bench">基准</a>
       <a href="#long">前缀缓存</a>
       <a href="#positioning">定位</a>
@@ -95,6 +96,23 @@
         Ollama 基线是 <span class="mono">qwen3:4b</span>（GGUF Q4_K_M）。绝对数字会随机器负载变化；
         原始数据与环境信息在
         <a href="https://github.com/louisyeaaah/terrazzo/blob/main/BENCHMARKS.md">BENCHMARKS §48</a>。
+      </div>
+    </div>
+  </section>
+
+  <section id="progress" aria-labelledby="progress-title">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="progress-title">一路怎么走过来的</h2>
+        <span class="note">从调度器移植到可测量的运行时</span>
+      </div>
+      <div class="timeline">
+        <div class="t-item"><div class="d">移植</div><h4>DeepInfer 语义上 MLX</h4><p>把 paged 块管理、chunked prefill、LCFS 抢占和连续批处理从数据中心设计搬到一台 Mac 上。</p></div>
+        <div class="t-item"><div class="d">服务化</div><h4>前缀缓存 + API</h4><p>精确共享前缀快照、<span class="mono">/v1/prewarm</span>、OpenAI + Ollama 接口、CLI 与 Modelfile。</p></div>
+        <div class="t-item"><div class="d">Agent 修复</div><h4>16 会话 TTFT</h4><p>预注册 + <span class="mono">--profile agent</span> 把 16 会话 p50 首 token 从 <b>8–11 秒降到 2.56 秒</b>。</p></div>
+        <div class="t-item"><div class="d">产品化</div><h4>v0.3.0 → Terrazzo</h4><p>模型管理、<span class="mono">terrazzo</span> CLI、中英文文档、固定依赖与 head-to-head 基准。</p></div>
+        <div class="t-item"><div class="d">加固</div><h4>Review 驱动的可靠性</h4><p>请求 deadline、body/并发上限、HTTP 加固、hang watchdog、TLS、<b>226 核心 + 31 内核测试</b>、Linux + macOS CI。</p></div>
+        <div class="t-item"><div class="d">实测</div><h4>诚实的重新测量</h4><p>空闲机器 + 真 token 计数复测：decode <b>1.51×</b> Ollama、agent 吞吐 <b>2.2×</b>；16 会话 vLLM-Metal 领先。</p></div>
       </div>
     </div>
   </section>
