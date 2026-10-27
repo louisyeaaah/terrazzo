@@ -836,28 +836,26 @@ class BodyLimitTest(unittest.TestCase):
 class ConcurrencyCapTest(unittest.TestCase):
     def test_excess_connections_get_503(self):
         httpd, base = start_bounded(FakeRuntime(), max_concurrent=1)
-        body = json.dumps({"model": "m", "messages": [{"role": "user", "content": "hi"}]}).encode()
 
-        def call():
-            req = urllib.request.Request(base + "/v1/chat/completions", data=body,
-                                         headers={"Content-Type": "application/json"})
+        def health():
             try:
-                with urllib.request.urlopen(req, timeout=10) as r:
+                with urllib.request.urlopen(base + "/health", timeout=10) as r:
                     return r.status, r.read()
             except urllib.error.HTTPError as exc:
                 return exc.code, exc.read()
 
         try:
-            # deterministically occupy the only slot, then hit the server
+            # deterministically occupy the only slot, then hit the server with a
+            # body-less request (avoids a client-side RST race when the server
+            # closes while the request body is still in flight)
             httpd._slots.acquire()
             try:
-                status, payload = call()
+                status, payload = health()
             finally:
                 httpd._slots.release()
             self.assertEqual(status, 503, payload)
             self.assertIn(b"overloaded", payload)
-            # with the slot free the same request succeeds
-            status, payload = call()
+            status, payload = health()
             self.assertEqual(status, 200, payload)
         finally:
             httpd.shutdown()
