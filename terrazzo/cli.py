@@ -82,7 +82,8 @@ def _cfg(args):
         scheduler_aging_tokens_per_s=getattr(args, "scheduler_aging", 100.0),
         memory_cost_weight=getattr(args, "memory_cost_weight", 0.1),
         cost_calibration=not getattr(args, "no_cost_calibration", False),
-        completion_batch_size=args.max_num_seqs,
+        completion_batch_size=(getattr(args, "completion_batch_size", None)
+                               or args.max_num_seqs),
     )
 
 
@@ -775,6 +776,9 @@ def build_parser() -> argparse.ArgumentParser:
     def common(sp):
         sp.add_argument("--model", default="mlx-community/Qwen3-4B-4bit")
         sp.add_argument("--max-num-seqs", type=int, default=8, dest="max_num_seqs")
+        sp.add_argument("--completion-batch-size", type=int, default=None,
+                        dest="completion_batch_size",
+                        help="BatchGenerator decode batch; defaults to --max-num-seqs")
         sp.add_argument("--max-num-batched-tokens", type=int, default=2048, dest="max_num_batched_tokens")
         sp.add_argument("--prefill-chunk-size", type=int, default=512, dest="prefill_chunk_size")
         sp.add_argument("--num-gpu-blocks", type=int, default=4096, dest="num_gpu_blocks",

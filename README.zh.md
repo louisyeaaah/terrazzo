@@ -133,12 +133,12 @@ KV 字节安排接纳顺序**（替代 FIFO）。这是有限的 cache/admission
 - 产品路径：tuned FIFO 预设 `--profile agent`（16 槽，共享前缀）与 `--profile mixed`
   （4 槽，shared+unique）是当前默认；cost 排序保留实验选项。自动 cap 以小实验形式实现，
   入口 `TERRAZZO_AUTO_CAP=1`（含 SIGUSR1 诊断和 `/v1/concurrency` 控制端点）。
-- 自动 cap 实验（单进程 shared → mixed → shared）：简单规则（缓存命中/未缓存长度/队列/内存，
-  cap4↔cap16，6 秒保持）基本跟随每阶段 oracle——shared p50 1.32 vs 1.50 s，mixed p50 59.3 vs
-  57.3 s、p95 100.8 vs 101.7 s；明显优于固定 cap16 的 mixed 尾部（100.8 vs 120.4 s）和固定
-  cap4 的 shared p50（1.32 vs 5.01 s），但固定 cap4 的总吞吐仍更高（18.5 vs 17.3 tok/s）。
-  反向 mixed→shared→mixed 序列验证了 4→16→4 切换且不抖动。自动模式保持 **opt-in**；
-  在更多序列验证前，手动预设仍是产品默认。
+- 自动 cap 实验（单进程 shared → mixed → shared）：修正第一版的 admission profile confound
+  后（fixed4 原先用了不同的 ADMIT_BATCH/WAIT 和 runner batch），**fixed cap4 是当前最好的
+  静态策略**：26.4 tok/s / 116.6 s wall，auto 23.9 / 128.4 s，fixed16 22.8 / 134.9 s；
+  oracle 16/4/16 为 26.0 / 117.9 s。auto 仍能 16→4→16 切换且不抖动，mixed 尾部优于
+  fixed16，但整体没有优于 fixed4。上一轮“auto 接近 oracle / 优于两个固定 cap”的结论因
+  confound 撤回。auto 保持 opt-in，手动预设仍是默认。
 - 全共享前缀、8 会话 × 2 轮、8k 长提示都没有排序收益；前缀缓存本身仍是最大杠杆。
 
 调度器仍不能控制执行器的 prefill 预算（调度 16.4k vs 实际 41.2k prompt tokens，2.5×），
@@ -236,7 +236,7 @@ BENCHMARKS.md      所有测量数据，包括输掉的那些
 ## 测试与基准
 
 ```bash
-python -m unittest discover -s tests                  # 核心套件（245 个测试，1 skipped）
+python -m unittest discover -s tests                  # 核心套件（247 个测试，1 skipped）
 python -m unittest discover -s experiments/tests -v   # 实验内核（31 个测试）
 python scripts/ci_core_tests.py                       # MLX 被 block 的纯 Python 子集
 bash bench/head_to_head.sh                            # 与 Ollama 的 head-to-head

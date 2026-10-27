@@ -1,3 +1,4 @@
+import threading
 import time
 from collections import deque
 import unittest
@@ -44,3 +45,62 @@ class TraceTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipIf(Engine is None, "engine requires MLX")
+class LifecycleTest(unittest.TestCase):
+    def _engine(self):
+        e = Engine.__new__(Engine)
+        e._lock = threading.RLock()
+        e._stream_lock = threading.RLock()
+        e._streams = {}
+        e._outputs = {}
+        e._inserted = {}
+        e.request_stages = {"added": 0, "first_token": 0, "finished": 0,
+                            "aborted": 0, "failed": 0}
+        return e
+
+    def test_fail_streams_does_not_block_on_execution_lock(self):
+        import queue as _queue
+        import threading
+        e = self._engine()
+        q = _queue.Queue()
+        e._streams["r1"] = q
+        e._outputs["r1"] = object()
+        result = {}
+        started = threading.Event()
+        def run():
+            started.set()
+            result["n"] = e.fail_streams(RuntimeError("metal hung"))
+        # simulate the worker thread holding _lock inside runner.step()
+        with e._lock:
+            t = threading.Thread(target=run)
+            t.start()
+            self.assertTrue(started.wait(2))
+            t.join(timeout=2)
+            self.assertFalse(t.is_alive(), "fail_streams blocked on the execution lock")
+        self.assertEqual(result.get("n"), 1)
+        event = q.get(timeout=1)
+        self.assertEqual(event["finish_reason"], "error")
+        self.assertEqual(e._streams, {})
+        self.assertEqual(e._outputs, {})
+
+    def test_collect_finished_releases_request_maps(self):
+        import queue as _queue
+        e = self._engine()
+        seq = Sequence(request_id="done", prompt_token_ids=list(range(8)),
+                       sampling_params=SamplingParams(max_tokens=4))
+        seq.finish("stop")
+        q = _queue.Queue()
+        e._streams["done"] = q
+        e._outputs["done"] = type("Out", (), {})()
+        class FakeScheduler:
+            def drain_finished(self):
+                return [seq]
+        e.scheduler = FakeScheduler()
+        e._collect_finished()
+        self.assertEqual(e._streams, {})
+        self.assertEqual(e._outputs, {})
+        final = q.get(timeout=1)
+        self.assertTrue(final.finished)
+        self.assertEqual(final.finish_reason, "stop")

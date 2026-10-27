@@ -44,12 +44,20 @@ def start(arm: str, model: str, port: int, system_text: str, log_path: Path) -> 
     cmd = [PY, "-m", "terrazzo", "serve", "--model", model,
            "--host", "127.0.0.1", "--port", str(port), "--no-thinking"]
     if arm == "fixed4":
-        cmd += ["--profile", "default", "--max-num-seqs", "4"]
+        # isolate the admission cap: keep the same runner batch as the other arms
+        cmd += ["--profile", "default", "--max-num-seqs", "4",
+                "--completion-batch-size", "16"]
     else:
         cmd += ["--profile", "agent"]
     if arm in ("oracle", "auto"):
         cmd += []
     env = os.environ.copy()
+    # one admission configuration for every arm: otherwise fixed4 (default profile)
+    # and agent-profile arms differ in ADMIT_BATCH/ADMIT_WAIT, not just the cap
+    env.pop("TERRAZZO_AUTO_CAP", None)
+    env.pop("TERRAZZO_ENABLE_CONTROL", None)
+    env["TERRAZZO_ADMIT_BATCH"] = "16"
+    env["TERRAZZO_ADMIT_WAIT"] = "4"
     env["TERRAZZO_ADMIT_SETTLE_MS"] = "50"
     env["TERRAZZO_STACK_DUMP"] = "1"
     if arm in ("oracle", "auto"):
@@ -157,6 +165,8 @@ def main() -> int:
                     phase_summary["max_num_seqs"] = st.get("max_num_seqs")
                     phase_summary["mlx_peak_mb"] = st.get("mlx_peak_mb")
                     phase_summary["peak_kv_tokens"] = st.get("peak_kv_tokens")
+                    phase_summary["admission"] = st.get("admission")
+                    phase_summary["completion_batch_size"] = st.get("completion_batch_size")
                 except Exception:
                     pass
                 phase_results.append(phase_summary)

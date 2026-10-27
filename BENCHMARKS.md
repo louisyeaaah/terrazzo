@@ -1848,7 +1848,7 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
   cache 方法是否存在，失败给出明确错误；`TERRAZZO_SKIP_MLX_LM_CHECK=1` 仅用于试验新版本。
 - `docs/COMPATIBILITY.md` 记录测试矩阵与不支持的平台。
 
-**当前测试**：核心 245 个（1 skipped）+ 实验内核 31 个；CI 两个主 job + 手动模型 E2E job（见 workflow）。
+**当前测试**：核心 247 个（1 skipped）+ 实验内核 31 个；CI 两个主 job + 手动模型 E2E job（见 workflow）。
 
 ## 45. Tools / function calling（2026-10-27）
 
@@ -1874,7 +1874,7 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
 
 关键修复：带 tools 时默认 `enable_thinking=false`（原来 `<think>` 把 token 预算吃光，
 128 token 内根本到不了 `<tool_call>`）；OpenAI 报文中 assistant `content:null` 需规范化为空串，
-否则 Jinja 模板抛 `'NoneType' is not iterable`。全套 **245 个核心测试 OK（1 skipped）+ 31 个实验内核测试**（§47 后）。
+否则 Jinja 模板抛 `'NoneType' is not iterable`。全套 **247 个核心测试 OK（1 skipped）+ 31 个实验内核测试**（§47 后）。
 
 ## 47. 残余风险修复（2026-10-27）
 
@@ -1900,8 +1900,8 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
 - Ollama 原生模式默认 `think=false`：qwen3 在 Ollama 默认开启思考会把 content 吃空、多轮历史失真。
 
 **修复后验证（commit `fbbdcb0`）**：
-- 本地：核心 **245 tests（1 skipped）**、实验内核 **31 tests（3 skipped）**、纯 Python（MLX blocked）
-  **148 run / 0 fail / 9 skip**。
+- 本地：核心 **247 tests（1 skipped）**、实验内核 **31 tests（3 skipped）**、纯 Python（MLX blocked）
+  **150 run / 0 fail / 11 skip**。
 - CI（[run 40426254576](https://github.com/louisyeaaah/terrazzo/actions/runs/40426254576)）：
   `Core tests (pure Python, MLX blocked)` ✅、`macOS (MLX) import + tests`（含 Metal kernel 与
   experiments）✅；`Model E2E` 仅在手动 `workflow_dispatch` 时运行（本次按预期 skipped）。
@@ -2148,23 +2148,33 @@ first_token/finished/aborted/failed）以及 `scripts/watch_health.py`。四次�
 decode 后停止），未复现挂起、未抓到栈。原挂起仍是 open issue，下次需在低负载下跑完整
 A/B/C/D 2-turn 序列。
 
-## 52. 负载感知并发选择：cap4 ↔ cap16（2026-10-27）
+## 52. 负载感知并发选择：cap4 ↔ cap16（修正版，2026-10-27）
 
-单进程、同一模型，shared → mixed → shared；16 会话、1 turn × 64 token、800ms stagger、
-2k 预注册前缀、50ms settle。外部 load ~6，表内相对比较。完整设计见
-[docs/CO-DESIGN.md](docs/CO-DESIGN.md) §13。
+**上一版实验存在 confound，已作废：** fixed4 用了 default profile（ADMIT_BATCH=4、
+WAIT=12、runner batch=4），其他组用 agent（16/4、runner batch=16），因此不能把差异归因于
+cap。修正后所有 arm 固定 ADMIT_BATCH=16、ADMIT_WAIT=4、settle=50ms、
+completion_batch_size=16，仅 admission cap 不同；harness 记录每组生效配置并清理继承的
+`TERRAZZO_AUTO_CAP`。
 
-| arm | overall tok/s | shared-1 p50/p95 | mixed p50/p95 | shared-2 p50/p95 | peak MLX |
-|---|---:|---:|---:|---:|---:|
-| fixed4 | **18.5** | 5.01 / 10.80 s | 51.01 / 88.81 s | 4.96 / 9.87 s | 18.7 GB |
-| fixed16 | 15.0 | 1.33 / 1.94 s | 83.84 / 120.38 s | 7.54 / 11.13 s | 40.8 GB |
-| oracle 16/4/16 | 16.9 | 1.50 / 2.32 s | 57.26 / 101.67 s | 1.43 / 2.24 s | 20.0 GB |
-| auto | 17.3 | 1.32 / 2.27 s | 59.25 / 100.76 s | 3.33 / 4.93 s | 20.0 GB |
+单进程 shared → mixed → shared，16 会话、1 turn × 64 token、800ms stagger、2k 预注册。
 
-auto 在 shared-1/mixed 基本跟随 oracle，mixed p95 明显好于 fixed16（100.8 vs 120.4 s），
-shared p50 明显好于 fixed4（1.32 vs 5.01 s）；但 fixed4 总吞吐仍更高（18.5 vs 17.3 tok/s）。
-反向 mixed→shared→mixed 序列验证自动切换 4→16→4 且无抖动。**结论：auto 作为 opt-in 实验可用，
-手动预设仍是默认；不能宣称自动策略全面优于固定 cap4。**
+| arm | overall tok/s | wall | shared-1 p50/p95 | mixed p50/p95 | shared-2 p50/p95 | peak MLX |
+|---|---:|---:|---:|---:|---:|---:|
+| **fixed4** | **26.4** | 116.6 s | 0.595 / 2.10 s | 33.48 / 61.00 s | 1.60 / 3.63 s | 19.1 GB |
+| fixed16 | 22.8 | 134.9 s | 0.453 / 0.68 s | 54.20 / 73.95 s | 2.68 / 7.03 s | 40.5 GB |
+| oracle 16/4/16 | 26.0 | 117.9 s | 0.448 / 0.61 s | 34.03 / 61.45 s | 0.48 / 0.69 s | 19.0 GB |
+| auto | 23.9 | 128.4 s | 0.427 / 0.67 s | 37.38 / 68.24 s | 2.09 / 3.76 s | 19.1 GB |
 
-实现：`terrazzo/concurrency.py`、`Engine.set_max_num_seqs`、`TERRAZZO_AUTO_CAP=1`、
-`POST /v1/concurrency`（需 `TERRAZZO_ENABLE_CONTROL=1`）、`bench/concurrency_switch.py`。
+auto 正确切换 16→4→16 且不抖动，但 **修正 confound 后 fixed4 整体最好**且接近 oracle；
+auto 仅优于 fixed16，未优于 fixed4。上一轮“auto 接近 oracle / 优于两个固定 cap”的结论
+不再成立，已从 README/CO-DESIGN 撤回。auto 保持 opt-in 实验功能，手动预设仍是默认。
+
+## 53. 代码审查后的可靠性修复（2026-10-27）
+
+| 问题 | 修复 |
+|---|---|
+| watchdog 的 fail_streams 需要 `_lock`，而 worker 在 `runner.step()` 中持有它，导致通知与 `os._exit` 都被阻塞 | 新增独立 `_stream_lock`；`fail_streams` 只取流锁，不碰执行锁；watchdog 可在 GPU 卡住时发终止事件并执行重启 |
+| 正常完成的请求不释放 `_streams/_outputs` | `_collect_finished` 发送 final event 后释放两个字典；生命周期测试覆盖完成请求不残留 |
+| `_active_failures` 每次异常后被无条件清零，`>=3` 永不触发 | 只在 `engine.step()` 正常返回时清零 |
+| paged/pool `/stats` 访问未定义的 `self.auto_cap` → AttributeError | `BaseRuntime` 增加 `auto_cap=None` / `_auto_inputs` 默认值 |
+| fixed4 对照组 admission profile 不同 | 修正 harness：统一 ADMIT_BATCH/WAIT/settle/runner batch，清理环境开关，记录生效配置 |

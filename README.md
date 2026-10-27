@@ -144,6 +144,13 @@ co-optimization. The honest summary:
   cap and the per-workload oracle cap.
 - Shared-only traffic, 8 sessions × 2 turns and 8k prompts showed no ordering benefit;
   prefix caching itself remains the dominant lever.
+- Auto-cap experiment (shared → mixed → shared, one process): after fixing the
+  admission-profile confound in the first run (fixed4 used different ADMIT_BATCH/WAIT and
+  runner batch), **fixed cap4 is the best static policy**: 26.4 tok/s / 116.6 s wall vs
+  auto 23.9 / 128.4 s and fixed16 22.8 / 134.9 s; oracle 16/4/16 is 26.0 / 117.9 s. Auto
+  still switches 16→4→16 without flapping and beats fixed16 on mixed tail, but it does not
+  beat fixed4 overall. The earlier "auto tracks oracle / beats both fixed caps" claim was
+  confounded and is retracted. Auto remains opt-in; manual presets stay the default.
 
 The scheduler still cannot control the executor's prefill budget (16.4k scheduled vs 41.2k
 actual prompt tokens, 2.5×), so the only controllable mechanism is admission/order.
@@ -245,7 +252,7 @@ BENCHMARKS.md      every measurement, including the ones that lost
 ## Tests and benchmarks
 
 ```bash
-python -m unittest discover -s tests                  # core suite (245 tests, 1 skipped)
+python -m unittest discover -s tests                  # core suite (247 tests, 1 skipped)
 python -m unittest discover -s experiments/tests -v   # experimental kernels (31 tests)
 python scripts/ci_core_tests.py                       # pure-Python subset with MLX blocked
 bash bench/head_to_head.sh                            # Ollama head-to-head

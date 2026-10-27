@@ -356,37 +356,48 @@ full A/B/C/D 2-turn sequence.
 
 ---
 
-## 13. Load-aware concurrency: cap4 ↔ cap16 in one process
+## 13. Load-aware concurrency: cap4 ↔ cap16 in one process (corrected run)
 
 Question: with one model and one long-lived server, can a simple rule change the admission
 cap between 4 and 16 across `shared → mixed → shared` traffic and approach the per-phase
-oracle? The rule is intentionally small: window of 16 recent requests (admitted + pending),
-cache-hit ratio, average uncached prompt tokens, queue depth, memory usage; switches only
-when `avg_uncached ≥ 512` (mixed → cap4) or `avg_uncached ≤ 256` and `hit_ratio ≥ 0.5`
-(shared → cap16); 6 s minimum hold; low cap only affects new admissions.
+oracle? Rule inputs: window of 16 recent requests (admitted + pending), cache-hit ratio,
+average uncached prompt tokens, queue depth, memory usage. Switches when
+`avg_uncached ≥ 512` (mixed → cap4) or `avg_uncached ≤ 256` and `hit_ratio ≥ 0.5`
+(shared → cap16); 6 s minimum hold; lowering affects only new admissions.
 
-Implementation: `terrazzo/concurrency.py` (pure rule), `Engine.set_max_num_seqs`,
-`TERRAZZO_AUTO_CAP=1` in `EngineRuntime`, control endpoint `POST /v1/concurrency`
-(`TERRAZZO_ENABLE_CONTROL=1`), harness `bench/concurrency_switch.py`.
-All phases: 16 sessions, 1 turn × 64 tokens, 800 ms stagger (so later arrivals see the new
-cap), prewarmed 2k shared prefix, 50 ms admission settle. Load was elevated (~6) during the
-run; compare within the table, not to earlier low-load numbers.
+Implementation: `terrazzo/concurrency.py`, `Engine.set_max_num_seqs`,
+`TERRAZZO_AUTO_CAP=1`, `POST /v1/concurrency` (`TERRAZZO_ENABLE_CONTROL=1`),
+`bench/concurrency_switch.py`. All phases: 16 sessions, 1 turn × 64 tokens, 800 ms
+stagger, prewarmed 2k shared prefix, 50 ms admission settle.
 
-### 13.1 Shared → mixed → shared
+**Review correction:** the first version of this experiment confounded the cap with the
+admission profile (`fixed4` used `default` → ADMIT_BATCH=4/WAIT=12 and a 4-wide runner
+batch; the other arms used `agent` → 16/4 and a 16-wide runner batch). The table below is
+the corrected run: every arm uses ADMIT_BATCH=16, ADMIT_WAIT=4, settle 50 ms and
+`completion_batch_size=16`; only the admission cap differs. The harness now records the
+effective `admission` and `completion_batch_size` per phase, and clears inherited
+`TERRAZZO_AUTO_CAP`/`TERRAZZO_ENABLE_CONTROL`.
 
-| arm | overall tok/s | shared-1 p50 / p95 | mixed p50 / p95 | shared-2 p50 / p95 | peak MLX |
-|---|---:|---:|---:|---:|---:|
-| fixed4 | **18.5** | 5.01 / 10.80 s | 51.01 / 88.81 s | 4.96 / 9.87 s | 18.7 GB |
-| fixed16 | 15.0 | 1.33 / 1.94 s | 83.84 / 120.38 s | 7.54 / 11.13 s | 40.8 GB |
-| oracle (16/4/16) | 16.9 | 1.50 / 2.32 s | 57.26 / 101.67 s | 1.43 / 2.24 s | 20.0 GB |
-| auto | 17.3 | 1.32 / 2.27 s | 59.25 / 100.76 s | 3.33 / 4.93 s | 20.0 GB |
+### 13.1 Corrected result (shared → mixed → shared)
 
-Auto decisions: cap16 during shared-1; one switch to 4 in mixed; one switch back to 16 in
-shared-2. No flapping. Auto tracks the oracle closely on shared-1/mixed (p50 within 2–4%,
-p95 within 1%), and sits between fixed caps on shared-2; fixed4 remains the aggregate
-throughput winner (18.5 vs 17.3 tok/s) because it avoids the high-cap mixed tail.
+| arm | overall tok/s | wall | shared-1 p50 / p95 | mixed p50 / p95 | shared-2 p50 / p95 | peak MLX |
+|---|---:|---:|---:|---:|---:|---:|
+| fixed4 | **26.4** | 116.6 s | 0.595 / 2.10 s | 33.48 / 61.00 s | 1.60 / 3.63 s | 19.1 GB |
+| fixed16 | 22.8 | 134.9 s | 0.453 / 0.68 s | 54.20 / 73.95 s | 2.68 / 7.03 s | 40.5 GB |
+| oracle 16/4/16 | 26.0 | 117.9 s | 0.448 / 0.61 s | 34.03 / 61.45 s | 0.48 / 0.69 s | 19.0 GB |
+| auto | 23.9 | 128.4 s | **0.427 / 0.67 s** | 37.38 / 68.24 s | 2.09 / 3.76 s | 19.1 GB |
 
-### 13.2 Validation on reversed sequence (mixed → shared → mixed)
+Auto decisions: cap16 shared-1; one switch to 4 in mixed; one switch back to 16 in
+shared-2; no flapping. It tracks the oracle on shared-1 and stays close on mixed, but the
+switch back to 16 lags in shared-2 (p50 2.09 vs 0.48 s).
+
+**Corrected conclusion:** with the confound removed, **fixed cap4 is the best static
+policy** (26.4 tok/s, 116.6 s wall) and is very close to the per-phase oracle (26.0,
+117.9 s). Auto (23.9, 128.4 s) beats fixed16 on mixed tail and shared memory, but does
+**not** beat fixed4 overall. The previous "auto tracks oracle / beats fixed caps" claim was
+confounded and is retracted for this workload.
+
+### 13.2 Validation sequence (mixed → shared → mixed)
 
 | phase | cap after phase | tok/s | TTFT p50 | TTFT p95 |
 |---|---:|---:|---:|---:|
@@ -394,17 +405,17 @@ throughput winner (18.5 vs 17.3 tok/s) because it avoids the high-cap mixed tail
 | shared | 16 | 41.9 | 2.84 s | 5.41 s |
 | mixed | 4 | 8.6 | 51.96 s | 93.21 s |
 
-The rule switched 4→16→4 in the unseen order and did not flip within a phase. This is one
-sequence; it supports the mechanism but is not a broad validation.
+The rule still switches 4→16→4 in an unseen order without within-phase flapping, but
+this run used the older workload and does not establish a performance advantage over a
+fixed cap.
 
 ### 13.3 Decision
 
-- Auto cap **works as an experimental mechanism** and approaches the phase oracle; it is
-  better than either fixed cap on at least one important axis (shared latency vs fixed4,
-  mixed tail vs fixed16).
-- It **does not dominate fixed4 overall** (fixed4 has higher aggregate throughput), so the
-  product default stays manual presets. `TERRAZZO_AUTO_CAP=1` is opt-in.
-- Switch loss is still visible (shared-2 p50 3.33 s vs oracle 1.43 s); earlier detection
-  would need admission-time signals, not just recent completed requests.
-- Next validation should use multiple unseen sequences and low load; do not tune thresholds
-  on the validation sequence.
+- Auto cap remains an **experimental, opt-in** feature; it is not a product default.
+- Tuned FIFO presets remain the default. For the tested workloads, fixed cap4 is the
+  strongest simple policy; fixed16 is only useful for shared-prefix latency and costs
+  memory/mixed tail.
+- Further work should use the corrected single-variable harness and multiple unseen
+  sequences before any automatic policy is considered for default.
+- Reliability fixes from the code review (watchdog lock, request release, failure counter,
+  paged/pool stats) are separate and documented in BENCHMARKS §53.

@@ -385,7 +385,11 @@ class EngineRuntime(BaseRuntime):
                         self._unhealthy = True
                         print("[engine] too many consecutive step failures; new requests "
                               "will be rejected until restart", flush=True)
-                self._active_failures = 0
+                else:
+                    # reset only when step() returned successfully; the old code
+                    # cleared the counter right after the exception branch, so it
+                    # could never reach the three-consecutive-failure threshold
+                    self._active_failures = 0
                 self._steps_since_admit += 1
             else:
                 time.sleep(0.002)
@@ -651,6 +655,12 @@ class EngineRuntime(BaseRuntime):
                               "peak_active_mb": round(self._mem_peak_mb, 1),
                               "mlx_allocator_limit": self._mlx_limits}
         st["worker"] = self._worker_stats()
+        engine = getattr(self, "engine", None)
+        if engine is not None:
+            st["completion_batch_size"] = engine.cfg.completion_batch_size
+            st["admission"] = {"batch_size": self.admit_batch_size,
+                               "wait_steps": self.admit_wait_steps,
+                               "settle_ms": self.admit_settle_ms}
         if self.auto_cap is not None:
             st["auto_concurrency"] = {**self.auto_cap.stats(),
                                       "inputs": dict(self._auto_inputs)}
@@ -803,6 +813,12 @@ class PagedRuntime(BaseRuntime):
         st["auto_prefix"] = {"enabled": self.auto_prefix, **self._auto_prefix_stats}
         st["prefix_registered_tokens"] = self.prefix.num_tokens if self.prefix else 0
         st["worker"] = self._worker_stats()
+        engine = getattr(self, "engine", None)
+        if engine is not None:
+            st["completion_batch_size"] = engine.cfg.completion_batch_size
+            st["admission"] = {"batch_size": self.admit_batch_size,
+                               "wait_steps": self.admit_wait_steps,
+                               "settle_ms": self.admit_settle_ms}
         if self.auto_cap is not None:
             st["auto_concurrency"] = {**self.auto_cap.stats(),
                                       "inputs": dict(self._auto_inputs)}
@@ -952,6 +968,12 @@ class PoolRuntime(BaseRuntime):
         st["auto_prefix"] = {"enabled": self.auto_prefix, **self._auto_prefix_stats}
         st["prefix_registered_tokens"] = self.prefix.num_tokens if self.prefix else 0
         st["worker"] = self._worker_stats()
+        engine = getattr(self, "engine", None)
+        if engine is not None:
+            st["completion_batch_size"] = engine.cfg.completion_batch_size
+            st["admission"] = {"batch_size": self.admit_batch_size,
+                               "wait_steps": self.admit_wait_steps,
+                               "settle_ms": self.admit_settle_ms}
         if self.auto_cap is not None:
             st["auto_concurrency"] = {**self.auto_cap.stats(),
                                       "inputs": dict(self._auto_inputs)}

@@ -173,6 +173,9 @@ class Engine:
         self._inserted: dict[str, int] = {}   # request_id -> uid
         self._request_id = 0
         self._lock = threading.RLock()
+        # Streams/outputs have their own lock: the hang watchdog must be able to
+        # fail requests while the worker thread holds _lock inside runner.step().
+        self._stream_lock = threading.RLock()
         self._streams: dict[str, "queue.Queue"] = {}
         self._outputs: dict[str, RequestOutput] = {}
 
@@ -226,10 +229,11 @@ class Engine:
                 prompt_token_ids=ids,
                 sampling_params=params,
             )
-            self._outputs[rid] = RequestOutput(
-                request_id=rid, num_prompt_tokens=len(ids)
-            )
-            self._streams[rid] = queue.Queue()
+            with self._stream_lock:
+                self._outputs[rid] = RequestOutput(
+                    request_id=rid, num_prompt_tokens=len(ids)
+                )
+                self._streams[rid] = queue.Queue()
             self.request_stages["added"] += 1
             cached_est, snapshot_bytes = 0, 0
             if self.prefix_cache is not None:
@@ -258,7 +262,8 @@ class Engine:
             return seq
 
     def stream(self, request_id: str) -> "queue.Queue":
-        return self._streams[request_id]
+        with self._stream_lock:
+            return self._streams[request_id]
 
     def set_max_num_seqs(self, n: int) -> int:
         """Change the admission cap for *new* requests (running requests continue)."""
@@ -276,21 +281,32 @@ class Engine:
             ok = self.scheduler.abort(request_id)
             if ok:
                 self.request_stages["aborted"] += 1
-            return ok
+        if ok:
+            # terminate a handler waiting on this stream as well, then release it
+            with self._stream_lock:
+                q = self._streams.pop(request_id, None)
+                self._outputs.pop(request_id, None)
+            if q is not None:
+                try:
+                    q.put({"request_id": request_id, "token_ids": [], "finished": True,
+                           "finish_reason": "abort"})
+                except Exception:
+                    pass
+        return ok
 
     def fail_streams(self, exc: BaseException) -> int:
-        """Terminate every waiting stream without touching the scheduler.
+        """Terminate every waiting stream without touching the execution lock.
 
-        Used by the hang watchdog: the worker thread may be stuck inside MLX, so
-        calling scheduler.abort() from another thread would race the worker. The
-        HTTP side still needs terminal events for its in-flight requests.
+        Used by the hang watchdog: the worker thread may be stuck inside MLX and
+        holding ``_lock``.  This path therefore only takes ``_stream_lock`` (brief,
+        never held across a GPU call), so terminal events are still delivered and the
+        caller can proceed to its restart path.
         """
-        with self._lock:
+        with getattr(self, "_stream_lock", self._lock):
             ids = list(self._streams)
             for rid in ids:
                 queue_ = self._streams.pop(rid, None)
                 self._outputs.pop(rid, None)
-                self._inserted.pop(rid, None)
                 if queue_ is not None:
                     try:
                         queue_.put({"request_id": rid, "token_ids": [], "finished": True,
@@ -298,10 +314,10 @@ class Engine:
                                     "error": f"{type(exc).__name__}: {exc}"})
                     except Exception:
                         pass
-            stages = getattr(self, "request_stages", None)
-            if stages is not None:
-                stages["failed"] += len(ids)
-            return len(ids)
+        stages = getattr(self, "request_stages", None)
+        if stages is not None:
+            stages["failed"] += len(ids)
+        return len(ids)
 
     def handle_failure(self, exc: BaseException) -> int:
         """Fatal step error: terminate every in-flight request so no HTTP handler hangs.
@@ -311,26 +327,15 @@ class Engine:
         the scheduler is told to drop the request. New requests can still be submitted.
         """
         with self._lock:
-            ids = list(self._streams)
+            stream_lock = getattr(self, "_stream_lock", self._lock)
+            with stream_lock:
+                ids = list(self._streams)
             for rid in ids:
-                queue_ = self._streams.pop(rid, None)
-                self._outputs.pop(rid, None)
-                self._inserted.pop(rid, None)
                 try:
                     self.scheduler.abort(rid)
                 except Exception:
                     pass
-                if queue_ is not None:
-                    try:
-                        queue_.put({"request_id": rid, "token_ids": [], "finished": True,
-                                    "finish_reason": "error",
-                                    "error": f"{type(exc).__name__}: {exc}"})
-                    except Exception:
-                        pass
-            stages = getattr(self, "request_stages", None)
-            if stages is not None:
-                stages["failed"] += len(ids)
-            return len(ids)
+        return self.fail_streams(exc)
 
     # -------------------------------------------------------------------- step
     def step(self) -> list[RequestOutput]:
@@ -590,7 +595,9 @@ class Engine:
                 self.scheduler.finish(seq)
                 self._inserted.pop(seq.request_id, None)
                 self.runner.uid_to_seq.pop(r.uid, None)
-            out = self._outputs[seq.request_id]
+            out = self._outputs.get(seq.request_id)
+            if out is None:  # already released by a watchdog/abort
+                continue
             out.token_ids.append(token)
             out.num_output_tokens = len(seq.output_token_ids)
             out.ttft = seq.ttft()
@@ -606,22 +613,32 @@ class Engine:
         return deltas
 
     def _push(self, request_id: str, delta: RequestOutput) -> None:
-        q = self._streams.get(request_id)
-        if q is not None:
-            q.put(delta)
+        with self._stream_lock:
+            q = self._streams.get(request_id)
+            if q is not None:
+                q.put(delta)
 
     def _collect_finished(self) -> None:
         for seq in self.scheduler.drain_finished():
             self.request_stages["finished"] += 1
-            out = self._outputs.get(seq.request_id)
-            if out is None:
-                continue
-            out.finished = True
-            out.finish_reason = seq.finish_reason
-            out.token_ids = list(seq.output_token_ids)
-            out.ttft = seq.ttft()
-            out.num_output_tokens = len(seq.output_token_ids)
-            self._push(seq.request_id, out)
+            with self._stream_lock:
+                out = self._outputs.get(seq.request_id)
+                if out is not None:
+                    out.finished = True
+                    out.finish_reason = seq.finish_reason
+                    out.token_ids = list(seq.output_token_ids)
+                    out.ttft = seq.ttft()
+                    out.num_output_tokens = len(seq.output_token_ids)
+                    q = self._streams.get(seq.request_id)
+                    if q is not None:
+                        try:
+                            q.put(out)
+                        except Exception:
+                            pass
+                # the HTTP handler owns the queue and reads the final event; the
+                # engine must not retain completed requests forever
+                self._streams.pop(seq.request_id, None)
+                self._outputs.pop(seq.request_id, None)
 
     # ------------------------------------------------------------- convenience
     def has_unfinished(self) -> bool:
