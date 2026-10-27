@@ -33,7 +33,8 @@ Terrazzo 是面向 macOS / Apple Silicon 的推理运行时与服务端，基于
   `/v1/prewarm`、`/stats`、`/v1/abort`。
 - **CLI**：Ollama 风格模型管理——`run`、`pull`、`list`、`show`、`rm`、`cp`、`create -f
   Modelfile`、`ps`、`prewarm`、`serve`；Modelfile 支持 `FROM` / `SYSTEM` / `PARAMETER`。
-- **运维**：Bearer 鉴权、全局限流、内存守卫（503 + `Retry-After`）、请求取消、结构化
+- **运维**：Bearer 鉴权（常量时间比较）、可选 TLS、全局限流、内存守卫（503 + `Retry-After`）、
+  并发/排队上限、请求 deadline、worker 卡死 watchdog（`/stats.worker`）、请求取消、结构化
   `/stats`、可选 `--profile agent`。
 
 ## 为什么选 Terrazzo（诚实定位）
@@ -144,11 +145,11 @@ BENCHMARKS.md      所有测量数据，包括输掉的那些
 ## 测试与基准
 
 ```bash
-python -m unittest discover -s tests                  # 核心套件（215 个测试，1 skipped）
+python -m unittest discover -s tests                  # 核心套件（226 个测试，1 skipped）
 python -m unittest discover -s experiments/tests -v   # 实验内核（31 个测试）
 python scripts/ci_core_tests.py                       # MLX 被 block 的纯 Python 子集
 bash bench/head_to_head.sh                            # 与 Ollama 的 head-to-head
-python bench/agent_workload.py --base ... --sessions 16
+python bench/agent_workload.py --base ... --sessions 16   # --api ollama 用原生 eval_count
 ```
 
 CI 两个 job：Linux 上 block 掉 MLX 跑纯 Python 套件（证明调度器/HTTP 层不依赖 Apple Silicon），
@@ -175,8 +176,9 @@ macOS 上安装固定版本 MLX 依赖跑同一套 + MLX 相关测试。benchmar
   除非显式设置 `TERRAZZO_SKIP_MLX_LM_CHECK=1`。
 - 强制工具调用（指定函数/`required`）是 best-effort：chat template 没有语法约束钩子。
 - `experiments/` 里的 Metal 内核**比 MLX/SDPA 慢**，只作为负结果保留，不是产品路径。
-- GPU 调用无法抢占：请求会按 deadline 返回 `504`，但 worker 线程可能仍卡住、需要重启进程；
-  详见 [docs/OPERATIONS.md](docs/OPERATIONS.md#known-gaps-residual-risks)。
+- GPU 调用无法抢占：心跳 watchdog 会把 runtime 标记为 unhealthy（`503`、`/stats.worker.hung`），
+  `TERRAZZO_HANG_RESTART=1` 时退出交给 supervisor 重启；详见
+  [docs/OPERATIONS.md](docs/OPERATIONS.md#known-gaps-residual-risks)。
 
 ## License
 

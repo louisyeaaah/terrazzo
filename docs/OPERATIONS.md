@@ -10,6 +10,9 @@ terrazzo serve --model <mlx-model-dir> --port 8600 --num-gpu-blocks 0 \
 # with auth and rate limiting
 terrazzo serve ... --api-key "$KEY" --rate-limit 5
 
+# TLS (bring your own certificate chain; still prefer a reverse proxy for public use)
+terrazzo serve ... --tls-cert cert.pem --tls-key key.pem
+
 # supervised (restart on crash)
 scripts/serve_watchdog.sh --max-restarts 10 -- terrazzo serve ...
 ```
@@ -54,6 +57,10 @@ Defaults are deliberately conservative; override with environment variables:
 | `TERRAZZO_MAX_CONCURRENT` | 64 | HTTP worker cap; excess connections get an immediate `503` + `Retry-After: 1` |
 | `TERRAZZO_MAX_PENDING` | 256 | inference queue cap; excess submissions get `503` |
 | `TERRAZZO_MEMORY_CAP_MB` | 70% RAM | memory guard (existing) |
+| `TERRAZZO_IDLE_TIMEOUT_S` | 30 | per-connection socket timeout (covers reads **and** writes: slowloris / stopped readers) |
+| `TERRAZZO_HANG_TIMEOUT_S` | 120 | worker heartbeat timeout: mark unhealthy, fail outstanding requests, reject new ones |
+| `TERRAZZO_HANG_RESTART` | unset | `1` = exit(70) after a detected hang so a supervisor restarts the process |
+| `TERRAZZO_TLS_CERT` / `TERRAZZO_TLS_KEY` | unset | serve HTTPS (same as `--tls-cert/--tls-key`) |
 
 Auth is checked before the request body is read. A request that hits the deadline is
 aborted in the engine so it does not keep occupying KV. After three consecutive
@@ -70,18 +77,19 @@ watch the server log for `[engine] step failed` lines.
 
 These are deliberate limits of the current hardening, not guesses:
 
-- **No GPU-level preemption.** A hung Metal kernel can keep the MLX worker thread
-  blocked; HTTP requests time out (`504`) and the pending queue eventually fills
-  (`503`), but the process may need a restart. `handle_failure()` only runs when
-  `step()` raises, not when it silently hangs.
-- **Paged/Pool runtimes are less hardened.** They terminate per-request exceptions
-  and handlers enforce request deadlines, but they do not have the
-  `Engine.handle_failure()` + unhealthy-after-3-failures path.
-- **Concurrency slots are HTTP threads.** A slow client holding a streaming response
-  occupies a slot until completion; there is no write timeout (only a 30 s read
-  timeout).
-- **No TLS and no constant-time API-key comparison.** Put it behind a reverse proxy
-  if it leaves localhost; the API key is a bearer token, not an auth system.
+- **No GPU-level preemption.** A hung Metal kernel cannot be preempted from Python.
+  A heartbeat watchdog now detects it (default `TERRAZZO_HANG_TIMEOUT_S=120`): the
+  runtime is marked unhealthy, queued/in-flight requests get a terminal error, new
+  requests get `503`, and `/stats.worker` shows `hung=true`. Set
+  `TERRAZZO_HANG_RESTART=1` to `exit(70)` and let a supervisor (launchd/systemd)
+  restart the process; without a supervisor the process must be restarted manually.
+- **Paged/Pool runtimes are less battle-tested.** They now also have per-request
+  error events, unhealthy-after-3-failures and the hang watchdog, but their
+  long-running soak coverage is thinner than the batch runtime.
+- **Concurrency slots are HTTP threads.** The socket timeout now applies to reads
+  and writes (`TERRAZZO_IDLE_TIMEOUT_S`, default 30 s), so a client that stops
+  reading is disconnected, but a slow reader still occupies a slot for up to that
+  window.
 - **CI does not run model E2E or the Metal kernel experiments.** The macOS job covers
   import + core suite + selected MLX unit tests; the `experiments/` kernels and
   `TERRAZZO_MAC_MODEL` E2E tests need real hardware/model access.

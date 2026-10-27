@@ -389,7 +389,9 @@ def cmd_serve(args) -> int:
           system_text=system_text, use_metal=getattr(args, "metal", False),
           target_tok_s=args.target_tok_s, allow_below_target=args.allow_below_target,
           api_key=args.api_key, rate_limit_rps=args.rate_limit_rps,
-          no_thinking=args.no_thinking, default_params=default_params or None)
+          no_thinking=args.no_thinking, default_params=default_params or None,
+          tls_cert=getattr(args, "tls_cert", None),
+          tls_key=getattr(args, "tls_key", None))
     return 0
 
 
@@ -823,6 +825,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="serve even if the predicted tok/s misses the target")
     s.add_argument("--api-key", default=None, dest="api_key",
                    help="require 'Authorization: Bearer <key>' on all endpoints except /health")
+    s.add_argument("--tls-cert", default=None, dest="tls_cert",
+                   help="TLS certificate chain file (enables HTTPS; also TERRAZZO_TLS_CERT)")
+    s.add_argument("--tls-key", default=None, dest="tls_key",
+                   help="TLS private key file (also TERRAZZO_TLS_KEY)")
     s.add_argument("--rate-limit", type=float, default=0.0, dest="rate_limit_rps",
                    help="global requests/second limit (token bucket); 0 disables")
     s.add_argument("--memory-cap-mb", type=float, default=None, dest="memory_cap_mb",

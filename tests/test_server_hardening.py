@@ -862,3 +862,211 @@ class ConcurrencyCapTest(unittest.TestCase):
         finally:
             httpd.shutdown()
             httpd.server_close()
+
+
+class ErrorDeltaRuntime(FakeRuntime):
+    """Paged/Pool-style runtimes report failures as terminal error events."""
+
+    def submit(self, prompt_ids, params, request_id=None, timeout=None):
+        q: queue.Queue = queue.Queue()
+        q.put({"request_id": "req-err", "token_ids": [], "finished": True,
+               "finish_reason": "error", "error": "simulated backend failure"})
+        return "req-err", q
+
+
+class RuntimeErrorEventTest(unittest.TestCase):
+    def _post(self, base, body):
+        req = urllib.request.Request(base + "/v1/chat/completions",
+                                     data=json.dumps(body).encode(),
+                                     headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return r.status, r.read().decode()
+        except urllib.error.HTTPError as exc:
+            return exc.code, exc.read().decode()
+
+    def test_nonstream_runtime_error_is_500(self):
+        httpd, base = start(ErrorDeltaRuntime())
+        try:
+            status, raw = self._post(base, {"model": "m", "stream": False,
+                                            "messages": [{"role": "user", "content": "hi"}]})
+            self.assertEqual(status, 500)
+            self.assertIn("simulated backend failure", raw)
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+
+    def test_streaming_runtime_error_ends_with_error_frame(self):
+        httpd, base = start(ErrorDeltaRuntime())
+        try:
+            status, raw = self._post(base, {"model": "m", "stream": True,
+                                            "messages": [{"role": "user", "content": "hi"}]})
+            self.assertEqual(status, 200)
+            self.assertIn('"finish_reason": "error"', raw)
+            self.assertIn("simulated backend failure", raw)
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+
+
+class SlowClientTest(unittest.TestCase):
+    def test_partial_request_is_closed_after_idle_timeout(self):
+        import socket
+
+        httpd, base = start(FakeRuntime(), idle_timeout_s=0.5)
+        host, port = "127.0.0.1", int(base.rsplit(":", 1)[1])
+        sock = socket.create_connection((host, port), timeout=5)
+        try:
+            sock.sendall(b"POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\n")
+            sock.settimeout(5)
+            # the server should close the connection on its idle timeout
+            data = sock.recv(4096)
+            self.assertEqual(data, b"")
+        finally:
+            sock.close()
+            httpd.shutdown()
+            httpd.server_close()
+
+
+class TlsTest(unittest.TestCase):
+    def test_https_roundtrip_with_self_signed_cert(self):
+        import shutil
+        import ssl
+        import subprocess
+        import tempfile
+
+        if shutil.which("openssl") is None:
+            self.skipTest("openssl not available")
+        tmp = tempfile.mkdtemp()
+        cert, key = f"{tmp}/cert.pem", f"{tmp}/key.pem"
+        try:
+            subprocess.run(
+                ["openssl", "req", "-x509", "-newkey", "rsa:2048", "-keyout", key,
+                 "-out", cert, "-days", "1", "-nodes", "-subj", "/CN=localhost"],
+                check=True, capture_output=True, timeout=30)
+        except Exception as exc:  # pragma: no cover - environment dependent
+            self.skipTest(f"openssl failed: {exc}")
+
+        httpd = BoundedThreadingHTTPServer(("127.0.0.1", 0), make_handler(FakeRuntime()))
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(certfile=cert, keyfile=key)
+        httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
+        port = httpd.server_address[1]
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        client_ctx = ssl._create_unverified_context()
+        try:
+            req = urllib.request.Request(
+                f"https://127.0.0.1:{port}/v1/chat/completions",
+                data=json.dumps({"model": "m", "stream": False,
+                                 "messages": [{"role": "user", "content": "hi"}]}).encode(),
+                headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=10, context=client_ctx) as r:
+                self.assertEqual(r.status, 200)
+                self.assertIn(b"choices", r.read())
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+
+
+class WatchdogTest(unittest.TestCase):
+    def test_watchdog_fires_on_stalled_worker(self):
+        import threading
+
+        from terrazzo.server import _WorkerWatchdog
+
+        hit = threading.Event()
+        wd = _WorkerWatchdog(
+            "test", is_busy=lambda: True,
+            progress_age=lambda: 999.0,
+            hang_timeout_s=1.0,
+            on_hang=lambda: hit.set(),
+            interval=0.01,
+        )
+        wd.start()
+        try:
+            self.assertTrue(hit.wait(2.0))
+        finally:
+            wd.stop()
+
+    def test_watchdog_ignores_idle_worker(self):
+        import threading
+
+        from terrazzo.server import _WorkerWatchdog
+
+        hit = threading.Event()
+        wd = _WorkerWatchdog(
+            "test", is_busy=lambda: False,
+            progress_age=lambda: 999.0,
+            hang_timeout_s=1.0,
+            on_hang=lambda: hit.set(),
+            interval=0.01,
+        )
+        wd.start()
+        try:
+            self.assertFalse(hit.wait(0.2))
+        finally:
+            wd.stop()
+
+    def test_engine_on_worker_hang_fails_pending_and_marks_unhealthy(self):
+        import threading
+
+        from terrazzo.server import EngineRuntime
+
+        class FakeEngine:
+            def __init__(self):
+                self.failed = []
+
+            def fail_streams(self, exc):
+                self.failed.append(exc)
+                return 1
+
+        rt = EngineRuntime.__new__(EngineRuntime)
+        rt._unhealthy = False
+        rt._hung = False
+        rt.hang_timeout_s = 120.0
+        rt._last_progress = time.perf_counter()
+        rt._busy = True
+        slot = {"rid": "r1", "event": threading.Event(), "error": None}
+        rt._pending = [slot]
+        rt._pending_lock = threading.Lock()
+        rt.engine = FakeEngine()
+        rt._on_worker_hang()
+        self.assertTrue(rt._unhealthy)
+        self.assertTrue(rt._hung)
+        self.assertEqual(rt._pending, [])
+        self.assertTrue(slot["event"].is_set())
+        self.assertIsInstance(slot["error"], TimeoutError)
+        self.assertTrue(rt.engine.failed)
+        stats = rt._worker_stats()
+        self.assertTrue(stats["unhealthy"])
+        self.assertTrue(stats["hung"])
+
+    def test_paged_on_worker_hang_fails_active_request(self):
+        import queue as _queue
+        import threading
+
+        from terrazzo.server import PagedRuntime
+
+        rt = PagedRuntime.__new__(PagedRuntime)
+        rt._unhealthy = False
+        rt._hung = False
+        rt.hang_timeout_s = 120.0
+        rt._last_progress = time.perf_counter()
+        rt._busy = True
+        q: _queue.Queue = _queue.Queue()
+        rt._active = ("r1", q)
+        rt._on_worker_hang()
+        self.assertTrue(rt._unhealthy)
+        event = q.get(timeout=1)
+        self.assertTrue(event["finished"])
+        self.assertEqual(event["finish_reason"], "error")
+        self.assertIn("no progress", event["error"])
+
+    def test_unhealthy_runtimes_reject_submissions(self):
+        from terrazzo.server import EngineRuntime, PagedRuntime
+
+        for cls in (EngineRuntime, PagedRuntime):
+            rt = cls.__new__(cls)
+            rt._unhealthy = True
+            with self.assertRaises(MemoryError):
+                rt.submit([1], SamplingParams(), "rid")

@@ -188,13 +188,58 @@ def chat(base: str, model: str, messages: list[dict], max_tokens: int) -> dict:
             "content": "".join(content)}
 
 
+def chat_ollama(base: str, model: str, messages: list[dict], max_tokens: int) -> dict:
+    """Native Ollama /api/chat: the done frame carries real eval_count/prompt_eval_count."""
+    body = json.dumps({
+        "model": model, "messages": messages, "stream": True,
+        "options": {"temperature": 0.0, "num_predict": max_tokens},
+    }).encode()
+    req = urllib.request.Request(base.rstrip("/") + "/api/chat", data=body,
+                                 headers={"Content-Type": "application/json"})
+    t0 = time.perf_counter()
+    ttft = None
+    content_events = 0
+    content: list[str] = []
+    prompt_tokens = None
+    completion_tokens = None
+    with urllib.request.urlopen(req, timeout=600) as resp:
+        for raw in resp:
+            line = raw.decode("utf-8", "ignore").strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except Exception:
+                continue
+            piece = (obj.get("message") or {}).get("content") or ""
+            if piece:
+                if ttft is None:
+                    ttft = time.perf_counter() - t0
+                content_events += 1
+                content.append(piece)
+            if obj.get("done"):
+                prompt_tokens = obj.get("prompt_eval_count", prompt_tokens)
+                completion_tokens = obj.get("eval_count", completion_tokens)
+                break
+    total = time.perf_counter() - t0
+    if completion_tokens is not None:
+        tokens, token_source = int(completion_tokens), "ollama-eval"
+    else:
+        tokens, token_source = content_events, "chunks(approx)"
+    return {"ttft_s": ttft if ttft is not None else total,
+            "tokens": tokens, "token_source": token_source,
+            "content_events": content_events,
+            "total_s": total, "prompt_tokens": prompt_tokens,
+            "content": "".join(content)}
+
+
 def run_session(base: str, model: str, system: str, turns: int, max_tokens: int,
-                user_text: str) -> list[dict]:
+                user_text: str, chat_fn=chat) -> list[dict]:
     history = [{"role": "system", "content": system}]
     out = []
     for t in range(turns):
         history.append({"role": "user", "content": f"{user_text}（第 {t + 1} 轮）"})
-        r = chat(base, model, history, max_tokens)
+        r = chat_fn(base, model, history, max_tokens)
         out.append(r)
         # carry the real answer into the next turn (agent-like growing conversation)
         history.append({"role": "assistant", "content": r["content"]})
@@ -214,6 +259,9 @@ def main() -> int:
     ap.add_argument("--system-file", default=None, dest="system_file",
                     help="use this text as the shared system prompt (else synthesized)")
     ap.add_argument("--stats", default=None, help="optional /stats endpoint for memory metrics")
+    ap.add_argument("--api", choices=["openai", "ollama"], default="openai",
+                    help="openai: /v1/chat/completions + stream_options.include_usage; "
+                         "ollama: native /api/chat + eval_count (true tokens for Ollama)")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
@@ -223,15 +271,16 @@ def main() -> int:
               else build_system_prompt(args.system_tokens))
 
     env_before = probe_environment(args.base, args.stats)
+    chat_fn = chat_ollama if args.api == "ollama" else chat
     # warm up the server (first request compiles kernels / fills caches)
-    chat(args.base, args.model, [{"role": "user", "content": "热身：你好"}], 8)
+    chat_fn(args.base, args.model, [{"role": "user", "content": "热身：你好"}], 8)
     stats_before = _get_json(args.stats) if args.stats else None
 
     t0 = time.perf_counter()
     with ThreadPoolExecutor(max_workers=args.sessions) as pool:
         futures = [
             pool.submit(run_session, args.base, args.model, system, args.turns,
-                        args.max_tokens, f"请总结规范要点 {i}")
+                        args.max_tokens, f"请总结规范要点 {i}", chat_fn)
             for i in range(args.sessions)
         ]
         results = [f.result() for f in futures]
@@ -264,6 +313,7 @@ def main() -> int:
 
     summary = {
         "label": args.label, "base": args.base, "model": args.model,
+        "api": args.api,
         "sessions": args.sessions, "turns": args.turns,
         "system_tokens": prompt_tokens or args.system_tokens,
         "max_tokens": args.max_tokens,

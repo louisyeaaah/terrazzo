@@ -36,8 +36,10 @@ long shared system prompts — the shape of real agent traffic.
 - **CLI** — Ollama-style model management: `run`, `pull`, `list`, `show`, `rm`, `cp`,
   `create -f Modelfile`, `ps`, `prewarm`, `serve`; Modelfile supports `FROM` / `SYSTEM` /
   `PARAMETER`.
-- **Operations** — bearer auth, global rate limit, memory guard (503 + `Retry-After`),
-  request cancellation, structured `/stats`, soak-tested.
+- **Operations** — bearer auth (constant-time compare), optional TLS, global rate
+  limit, memory guard (503 + `Retry-After`), bounded concurrency, per-request
+  deadlines, a worker hang watchdog (`/stats.worker`), request cancellation,
+  structured `/stats`.
 
 ## Why Terrazzo? (honest positioning)
 
@@ -151,11 +153,11 @@ BENCHMARKS.md      every measurement, including the ones that lost
 ## Tests and benchmarks
 
 ```bash
-python -m unittest discover -s tests                  # core suite (215 tests, 1 skipped)
+python -m unittest discover -s tests                  # core suite (226 tests, 1 skipped)
 python -m unittest discover -s experiments/tests -v   # experimental kernels (31 tests)
 python scripts/ci_core_tests.py                       # pure-Python subset with MLX blocked
 bash bench/head_to_head.sh                            # Ollama head-to-head
-python bench/agent_workload.py --base ... --sessions 16
+python bench/agent_workload.py --base ... --sessions 16   # --api ollama for native eval_count
 ```
 
 CI runs two jobs: a Linux job that executes the pure-Python suite with MLX blocked
@@ -187,8 +189,9 @@ Benchmark numbers, dependency pins and the tested matrix are documented in
   have no grammar hook.
 - Experimental Metal kernels in `experiments/` are **slower** than MLX/SDPA; they are
   kept as documented negative results, not product paths.
-- A hung GPU call cannot be preempted: request deadlines return `504`, but the worker
-  thread may require a process restart. See [docs/OPERATIONS.md](docs/OPERATIONS.md#known-gaps-residual-risks).
+- A hung GPU call cannot be preempted: a heartbeat watchdog marks the runtime unhealthy
+  (`503`, `/stats.worker.hung`), and `TERRAZZO_HANG_RESTART=1` exits for a supervisor
+  to restart. See [docs/OPERATIONS.md](docs/OPERATIONS.md#known-gaps-residual-risks).
 
 ## License
 

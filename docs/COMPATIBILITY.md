@@ -35,6 +35,23 @@ mismatch and the tested version. The escape hatch
 `TERRAZZO_SKIP_MLX_LM_CHECK=1` bypasses the check — only for testing a new
 mlx-lm release, never for production.
 
+## Patch smoke tests (behavioural, not just attribute checks)
+
+The version guard proves the *shape* of the mlx-lm API; these tests exercise the
+behaviour of the patches and run in CI on macOS:
+
+| test | what it proves |
+|---|---|
+| `tests/test_mask_patch.py` | patched attention mask matches the reference mask semantics |
+| `tests/test_dense_metal.py` | batched-attention path used by the engine matches reference numerics |
+| `tests/test_paged_metal.py` | paged KV decode kernel matches reference attention |
+| `tests/test_multi_query_metal.py` | multi-query decode kernel matches reference attention |
+| `tests/test_auto_blocks.py` | engine block sizing helper behaves without a model |
+| `experiments/tests/*` | experimental kernels still compile and match their references |
+
+`workflow_dispatch` with `run_model_e2e=true` additionally downloads
+`mlx-community/Qwen3-4B-4bit` and runs the model-level E2E suite.
+
 ## Benchmarks
 
 Every benchmark run records its environment in the output JSON: host, Python,

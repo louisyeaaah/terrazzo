@@ -1848,7 +1848,7 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
   cache 方法是否存在，失败给出明确错误；`TERRAZZO_SKIP_MLX_LM_CHECK=1` 仅用于试验新版本。
 - `docs/COMPATIBILITY.md` 记录测试矩阵与不支持的平台。
 
-**当前测试**：核心 215 个（1 skipped）+ 实验内核 31 个；CI 两个 job（见 workflow）。
+**当前测试**：核心 226 个（1 skipped）+ 实验内核 31 个；CI 两个主 job + 手动模型 E2E job（见 workflow）。
 
 ## 45. Tools / function calling（2026-10-27）
 
@@ -1874,4 +1874,20 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
 
 关键修复：带 tools 时默认 `enable_thinking=false`（原来 `<think>` 把 token 预算吃光，
 128 token 内根本到不了 `<tool_call>`）；OpenAI 报文中 assistant `content:null` 需规范化为空串，
-否则 Jinja 模板抛 `'NoneType' is not iterable`。全套 **215 个核心测试 OK（1 skipped）+ 31 个实验内核测试**（§46 后）。
+否则 Jinja 模板抛 `'NoneType' is not iterable`。全套 **226 个核心测试 OK（1 skipped）+ 31 个实验内核测试**（§47 后）。
+
+## 47. 残余风险修复（2026-10-27）
+
+上一轮 §46 之后仍列的残余风险，逐项处理：
+
+| 风险 | 处理 | 证据 |
+|---|---|---|
+| GPU 静默 hang 无法抢占 | 心跳 watchdog：worker busy 且 120s 无进展（`TERRAZZO_HANG_TIMEOUT_S`）→ 标记 unhealthy、失败排队/在途请求、新请求 503；`/stats.worker` 暴露 `hung/busy/last_progress_age_s`；`TERRAZZO_HANG_RESTART=1` 时 `exit(70)` 交给 supervisor 重启 | `tests/test_server_hardening.py::WatchdogTest`（触发/空闲不触发/Engine 与 Paged 失败在途请求/拒绝提交） |
+| Paged/Pool runtime 未加固 | handler 消费 `error` 事件（非流式 500、流式 error 帧）；连续 3 次失败标记 unhealthy；接入 watchdog 与 `_fail_outstanding` | `RuntimeErrorEventTest` + `WatchdogTest` |
+| 慢客户端/写超时 | socket 超时覆盖读**和写**（`TERRAZZO_IDLE_TIMEOUT_S`，默认 30s），`handle()` 吸收 `TimeoutError/BrokenPipe/ConnectionReset` | `SlowClientTest`（半截请求被关闭） |
+| 无 TLS / 非常量时间鉴权 | `hmac.compare_digest` 比较 API key；`serve --tls-cert/--tls-key`（或 `TERRAZZO_TLS_*`）启用 HTTPS；自签证书 e2e 测试 | `TlsTest` |
+| CI 不覆盖 Metal/experiments/模型 E2E | macOS job 增加 Metal kernel 测试（dense/paged/multi-query/mask/auto-blocks）+ `experiments/tests`；新增 `workflow_dispatch` 的模型 E2E job（下载 Qwen3-4B 并跑全量） | `.github/workflows/ci.yml` |
+| 跨后端 token 不可比 | `bench/agent_workload.py --api ollama` 走原生 `/api/chat`，用 `eval_count` 真 token（旧路径保留并标 `chunks(approx)`） | `tests/test_agent_bench.py` |
+| mlx-lm patch 仅版本检查 | COMPATIBILITY 明确"行为级 smoke tests"清单（mask/dense/paged/multi-query/auto-blocks），并纳入 macOS CI | `docs/COMPATIBILITY.md` |
+
+修复后全量测试与 CI 结果记录在本节末尾（以推送后 Actions 为准）。

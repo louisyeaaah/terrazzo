@@ -95,6 +95,54 @@ class BaseRuntime:
         """Pre-register a system prompt as a shared prefix (Ollama-style "load")."""
         raise NotImplementedError("this runtime has no prefix cache")
 
+    # ---------------------------------------------------------------- watchdog
+    def _start_watchdog(self) -> None:
+        """Start the hang watchdog; worker loops must update ``_last_progress``."""
+        self.hang_timeout_s = float(os.environ.get("TERRAZZO_HANG_TIMEOUT_S", "120"))
+        self._last_progress = time.perf_counter()
+        self._busy = False
+        self._hung = False
+        self._watchdog = _WorkerWatchdog(
+            name=self.name,
+            is_busy=lambda: bool(getattr(self, "_busy", False)),
+            progress_age=lambda: time.perf_counter() - getattr(
+                self, "_last_progress", time.perf_counter()),
+            hang_timeout_s=self.hang_timeout_s,
+            on_hang=self._on_worker_hang,
+        )
+        self._watchdog.start()
+
+    def _worker_stats(self) -> dict:
+        return {
+            "busy": bool(getattr(self, "_busy", False)),
+            "unhealthy": bool(getattr(self, "_unhealthy", False)),
+            "hung": bool(getattr(self, "_hung", False)),
+            "last_progress_age_s": round(
+                time.perf_counter() - getattr(self, "_last_progress", time.perf_counter()), 1),
+            "hang_timeout_s": getattr(self, "hang_timeout_s", None),
+        }
+
+    def _fail_outstanding(self, exc: BaseException) -> None:
+        """Fail everything the runtime has queued/in flight (subclass hook)."""
+
+    def _on_worker_hang(self) -> None:
+        if getattr(self, "_unhealthy", False):
+            return
+        self._unhealthy = True
+        self._hung = True
+        exc = TimeoutError(
+            f"MLX worker made no progress for {getattr(self, 'hang_timeout_s', 0):.0f}s")
+        try:
+            self._fail_outstanding(exc)
+        except Exception:  # pragma: no cover - best effort only
+            pass
+        print(f"[watchdog] {self.name} worker hung; failing outstanding requests "
+              f"and rejecting new ones", flush=True)
+        if os.environ.get("TERRAZZO_HANG_RESTART") == "1":
+            # process supervisor (launchd/systemd) restarts us; a hung Metal call
+            # cannot be preempted from Python
+            os._exit(70)
+
     # tokenizer helpers
     def encode(self, text: str) -> list[int]:
         return list(self.tokenizer.encode(text))
@@ -207,6 +255,7 @@ class EngineRuntime(BaseRuntime):
             raise self._init_error
         self._active_failures = 0
         self._unhealthy = False
+        self._start_watchdog()
 
     def _loop(self) -> None:
         try:
@@ -243,6 +292,8 @@ class EngineRuntime(BaseRuntime):
                     control_job()
                 except BaseException:
                     pass
+            self._last_progress = time.perf_counter()
+            self._busy = bool(self.engine.has_unfinished())
             if time.time() - self._last_mem_check >= 1.0:
                 self._last_mem_check = time.time()
                 self._memory_check()
@@ -297,6 +348,19 @@ class EngineRuntime(BaseRuntime):
                 self._steps_since_admit += 1
             else:
                 time.sleep(0.002)
+
+    def _fail_outstanding(self, exc: BaseException) -> None:
+        with self._pending_lock:
+            pending, self._pending = self._pending, []
+        for slot in pending:
+            slot["error"] = exc
+            slot["event"].set()
+        engine = getattr(self, "engine", None)
+        if engine is not None:
+            try:
+                engine.fail_streams(exc)
+            except Exception:
+                pass
 
     def _run_json_job(self, job: dict) -> None:
         """Constrained JSON generation runs on the MLX worker thread while idle."""
@@ -493,6 +557,7 @@ class EngineRuntime(BaseRuntime):
                               "evictions": self._memory_evictions,
                               "peak_active_mb": round(self._mem_peak_mb, 1),
                               "mlx_allocator_limit": self._mlx_limits}
+        st["worker"] = self._worker_stats()
         st.update(self._memory_stats())
         return st
 
@@ -506,6 +571,9 @@ class EngineRuntime(BaseRuntime):
 
     def close(self) -> None:
         self._stop.set()
+        watchdog = getattr(self, "_watchdog", None)
+        if watchdog is not None:
+            watchdog.stop()
         self._thread.join(timeout=2)
         self.engine.close()
 
@@ -539,6 +607,8 @@ class PagedRuntime(BaseRuntime):
             raise self._init_error
         self._active_failures = 0
         self._unhealthy = False
+        self._active = None
+        self._start_watchdog()
 
     def _init(self) -> None:
         from mlx_lm import load as mlx_load
@@ -558,6 +628,16 @@ class PagedRuntime(BaseRuntime):
                 [{"role": "system", "content": self._system_text}])
             self.prefix = self.session.register_prefix(ids)
 
+    def _fail_outstanding(self, exc: BaseException) -> None:
+        active = getattr(self, "_active", None)
+        if active is not None:
+            request_id, q = active
+            try:
+                q.put({"request_id": request_id, "token_ids": [], "finished": True,
+                       "finish_reason": "error", "error": f"{type(exc).__name__}: {exc}"})
+            except Exception:
+                pass
+
     def _loop(self) -> None:
         try:
             self._init()
@@ -575,9 +655,13 @@ class PagedRuntime(BaseRuntime):
                 break
             request_id, prompt_ids, params, q = item
             self.num_requests += 1
+            self._last_progress = time.perf_counter()
+            self._busy = True
+            self._active = (request_id, q)
 
             def on_token(tok_id: int, q=q, request_id=request_id) -> None:
                 self.num_tokens += 1
+                self._last_progress = time.perf_counter()
                 q.put({"request_id": request_id, "token_ids": [tok_id], "finished": False,
                        "finish_reason": None})
 
@@ -591,11 +675,22 @@ class PagedRuntime(BaseRuntime):
                 q.put({"request_id": request_id, "token_ids": [], "finished": True,
                        "finish_reason": "stop" if stats.decode_tokens else "length",
                        "stats": stats.as_dict()})
+                self._active_failures = 0
             except Exception as exc:  # keep the server alive
                 q.put({"request_id": request_id, "token_ids": [], "finished": True,
                        "finish_reason": "error", "error": str(exc)})
+                self._active_failures += 1
+                if self._active_failures >= 3:
+                    self._unhealthy = True
+            finally:
+                self._active = None
+                self._busy = False
+                self._last_progress = time.perf_counter()
 
     def submit(self, prompt_ids, params, request_id=None, timeout=None):
+        if getattr(self, "_unhealthy", False):
+            raise MemoryError(f"{self.name} runtime is unhealthy (worker failure/hang); "
+                              f"restart the server")
         request_id = request_id or f"req-{uuid.uuid4().hex[:10]}"
         q: "queue.Queue" = queue.Queue()
         self._queue.put((request_id, prompt_ids, params, q))
@@ -609,11 +704,15 @@ class PagedRuntime(BaseRuntime):
         st["queue_depth"] = self._queue.qsize()
         st["auto_prefix"] = {"enabled": self.auto_prefix, **self._auto_prefix_stats}
         st["prefix_registered_tokens"] = self.prefix.num_tokens if self.prefix else 0
+        st["worker"] = self._worker_stats()
         st.update(self._memory_stats())
         return st
 
     def close(self) -> None:
         self._stop.set()
+        watchdog = getattr(self, "_watchdog", None)
+        if watchdog is not None:
+            watchdog.stop()
         self._queue.put(None)
         self._thread.join(timeout=2)
 
@@ -648,6 +747,8 @@ class PoolRuntime(BaseRuntime):
             raise self._init_error
         self._active_failures = 0
         self._unhealthy = False
+        self._active = None
+        self._start_watchdog()
 
     def _init(self) -> None:
         from mlx_lm import load as mlx_load
@@ -672,6 +773,16 @@ class PoolRuntime(BaseRuntime):
                 [{"role": "system", "content": self._system_text}])
             self.prefix = self.session.register_prefix(ids)
 
+    def _fail_outstanding(self, exc: BaseException) -> None:
+        active = getattr(self, "_active", None)
+        if active is not None:
+            request_id, q = active
+            try:
+                q.put({"request_id": request_id, "token_ids": [], "finished": True,
+                       "finish_reason": "error", "error": f"{type(exc).__name__}: {exc}"})
+            except Exception:
+                pass
+
     def _loop(self) -> None:
         try:
             self._init()
@@ -689,9 +800,13 @@ class PoolRuntime(BaseRuntime):
                 break
             request_id, prompt_ids, params, q = item
             self.num_requests += 1
+            self._last_progress = time.perf_counter()
+            self._busy = True
+            self._active = (request_id, q)
 
             def on_token(tok_id: int, q=q, request_id=request_id) -> None:
                 self.num_tokens += 1
+                self._last_progress = time.perf_counter()
                 q.put({"request_id": request_id, "token_ids": [tok_id], "finished": False,
                        "finish_reason": None})
 
@@ -703,11 +818,22 @@ class PoolRuntime(BaseRuntime):
                 q.put({"request_id": request_id, "token_ids": [], "finished": True,
                        "finish_reason": "stop" if stats.decode_tokens else "length",
                        "stats": stats.as_dict()})
+                self._active_failures = 0
             except Exception as exc:
                 q.put({"request_id": request_id, "token_ids": [], "finished": True,
-                       "finish_reason": f"error: {exc}"})
+                       "finish_reason": "error", "error": str(exc)})
+                self._active_failures += 1
+                if self._active_failures >= 3:
+                    self._unhealthy = True
+            finally:
+                self._active = None
+                self._busy = False
+                self._last_progress = time.perf_counter()
 
     def submit(self, prompt_ids, params, request_id=None, timeout=None):
+        if getattr(self, "_unhealthy", False):
+            raise MemoryError(f"{self.name} runtime is unhealthy (worker failure/hang); "
+                              f"restart the server")
         request_id = request_id or f"req-{uuid.uuid4().hex[:10]}"
         q: "queue.Queue" = queue.Queue()
         self._queue.put((request_id, prompt_ids, params, q))
@@ -722,11 +848,15 @@ class PoolRuntime(BaseRuntime):
         st["queue_depth"] = self._queue.qsize()
         st["auto_prefix"] = {"enabled": self.auto_prefix, **self._auto_prefix_stats}
         st["prefix_registered_tokens"] = self.prefix.num_tokens if self.prefix else 0
+        st["worker"] = self._worker_stats()
         st.update(self._memory_stats())
         return st
 
     def close(self) -> None:
         self._stop.set()
+        watchdog = getattr(self, "_watchdog", None)
+        if watchdog is not None:
+            watchdog.stop()
         self._queue.put(None)
         self._thread.join(timeout=2)
         if getattr(self, "_patch", None) is not None:
@@ -750,6 +880,32 @@ def _sampling_from_body(body: dict, defaults: dict | None = None) -> SamplingPar
     )
 
 
+class _WorkerWatchdog(threading.Thread):
+    """Detect a worker thread that is busy but makes no progress (hung Metal call)."""
+
+    def __init__(self, name: str, is_busy, progress_age, hang_timeout_s: float,
+                 on_hang, interval: float = 1.0):
+        super().__init__(name=f"watchdog-{name}", daemon=True)
+        self._is_busy = is_busy
+        self._progress_age = progress_age
+        self._hang_timeout_s = float(hang_timeout_s)
+        self._on_hang = on_hang
+        self._interval = interval
+        self._stopped = threading.Event()
+
+    def run(self) -> None:
+        while not self._stopped.wait(self._interval):
+            try:
+                if self._is_busy() and self._progress_age() > self._hang_timeout_s:
+                    self._on_hang()
+                    return
+            except Exception:  # pragma: no cover - watchdog must never crash
+                pass
+
+    def stop(self) -> None:
+        self._stopped.set()
+
+
 class PayloadTooLarge(Exception):
     def __init__(self, size: int):
         self.size = size
@@ -758,7 +914,7 @@ class PayloadTooLarge(Exception):
 
 def make_handler(runtime: BaseRuntime, *, api_key: str | None = None,
                  rate_limit_rps: float = 0.0, request_timeout_s: float = 600.0,
-                 max_body_bytes: int = 1 << 20):
+                 max_body_bytes: int = 1 << 20, idle_timeout_s: float = 30.0):
     bucket = {"tokens": float(rate_limit_rps or 0.0), "last": time.time()}
     bucket_lock = threading.Lock()
 
@@ -777,8 +933,9 @@ def make_handler(runtime: BaseRuntime, *, api_key: str | None = None,
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
-        # idle/read timeout for a single request (slowloris protection)
-        timeout = 30
+        # socket timeout for the whole request (covers both blocking reads and writes,
+        # e.g. slowloris clients and clients that stop reading a stream)
+        timeout = idle_timeout_s
 
         def log_message(self, fmt, *args):
             pass
@@ -787,8 +944,17 @@ def make_handler(runtime: BaseRuntime, *, api_key: str | None = None,
         def _authorized(self) -> bool:
             if not api_key:
                 return True
+            import hmac
+
             header = self.headers.get("Authorization", "")
-            return header == f"Bearer {api_key}"
+            return hmac.compare_digest(header.encode(), f"Bearer {api_key}".encode())
+
+        def handle(self) -> None:
+            try:
+                super().handle()
+            except (TimeoutError, ConnectionResetError, BrokenPipeError):
+                # socket timeout (idle/slow client) or client went away mid-response
+                self.close_connection = True
 
         def _json(self, code: int, payload: dict) -> None:
             data = json.dumps(payload, ensure_ascii=False).encode()
@@ -945,6 +1111,8 @@ def make_handler(runtime: BaseRuntime, *, api_key: str | None = None,
                 try:
                     while True:
                         d = self._norm(self._qget(q, _rid))
+                        if d.get("error"):
+                            raise RuntimeError(str(d["error"]))
                         ids = d.get("token_ids") or []
                         if d.get("finished") and len(ids) > 1:
                             tokens = list(ids)
@@ -955,6 +1123,9 @@ def make_handler(runtime: BaseRuntime, *, api_key: str | None = None,
                 except TimeoutError as exc:
                     runtime.abort(_rid)
                     return self._ollama_error(504, str(exc))
+                except RuntimeError as exc:
+                    runtime.abort(_rid)
+                    return self._ollama_error(500, str(exc))
                 from .tools import split_thinking
 
                 thinking_text, answer_text = split_thinking(runtime.decode(tokens))
@@ -982,6 +1153,8 @@ def make_handler(runtime: BaseRuntime, *, api_key: str | None = None,
             try:
                 while True:
                     d = self._norm(self._qget(q, _rid))
+                    if d.get("error"):
+                        raise RuntimeError(str(d["error"]))
                     ids = d.get("token_ids") or []
                     if d.get("finished") and len(ids) > 1:
                         out = list(ids)
@@ -1025,12 +1198,13 @@ def make_handler(runtime: BaseRuntime, *, api_key: str | None = None,
                     printed_think = len(thinking_text)
                     if d.get("finished") or stopped:
                         break
-            except TimeoutError as exc:
+            except (TimeoutError, RuntimeError) as exc:
                 runtime.abort(_rid)
                 if stream:
                     self._nd(frame(done=True, done_reason="error", error=str(exc)))
                 else:
-                    self._ollama_error(504, str(exc))
+                    self._ollama_error(504 if isinstance(exc, TimeoutError) else 500,
+                                       str(exc))
                 return
             timing = self._ollama_timing(t0, prompt_ids, out)
             done_reason = "stop"
@@ -1662,6 +1836,8 @@ def make_handler(runtime: BaseRuntime, *, api_key: str | None = None,
                 try:
                     while True:
                         delta = self._norm(self._qget(q, request_id))
+                        if delta.get("error"):
+                            raise RuntimeError(str(delta["error"]))
                         ids = delta.get("token_ids") or []
                         if delta.get("finished") and len(ids) > 1:
                             tokens = ids  # final event carries the full output
@@ -1673,6 +1849,11 @@ def make_handler(runtime: BaseRuntime, *, api_key: str | None = None,
                 except TimeoutError as exc:
                     runtime.abort(request_id)
                     self._json(504, {"error": {"type": "timeout", "message": str(exc)}})
+                    return
+                except RuntimeError as exc:
+                    runtime.abort(request_id)
+                    self._json(500, {"error": {"type": "generation_failed",
+                                               "message": str(exc)}})
                     return
                 text = runtime.decode(tokens)
                 usage = {"prompt_tokens": len(prompt_ids), "completion_tokens": len(tokens),
@@ -1699,6 +1880,8 @@ def make_handler(runtime: BaseRuntime, *, api_key: str | None = None,
             try:
                 while True:
                     delta = self._norm(self._qget(q, request_id))
+                    if delta.get("error"):
+                        raise RuntimeError(str(delta["error"]))
                     pieces = delta.get("token_ids") or []
                     for tok_id in pieces:
                         streamed_ids.append(tok_id)
@@ -1745,7 +1928,7 @@ def make_handler(runtime: BaseRuntime, *, api_key: str | None = None,
                         self.wfile.write(b"data: [DONE]\n\n")
                         self.wfile.flush()
                         break
-            except TimeoutError as exc:
+            except (TimeoutError, RuntimeError) as exc:
                 # headers are already out: terminate the SSE stream explicitly
                 runtime.abort(request_id)
                 try:
@@ -1814,7 +1997,8 @@ def serve(cfg: EngineConfig, host: str = "127.0.0.1", port: int = 8080,
           default_params: dict | None = None,
           use_metal: bool = False, target_tok_s: float | None = None,
           allow_below_target: bool = False, api_key: str | None = None,
-          rate_limit_rps: float = 0.0, no_thinking: bool = False) -> None:
+          rate_limit_rps: float = 0.0, no_thinking: bool = False,
+          tls_cert: str | None = None, tls_key: str | None = None) -> None:
     # MacTurbo admission: refuse to start when the requested SLO is unreachable
     capability = None
     try:
@@ -1843,18 +2027,29 @@ def serve(cfg: EngineConfig, host: str = "127.0.0.1", port: int = 8080,
     max_concurrent = int(os.environ.get("TERRAZZO_MAX_CONCURRENT", "64"))
     request_timeout_s = float(os.environ.get("TERRAZZO_REQUEST_TIMEOUT_S", "600"))
     max_body_bytes = int(float(os.environ.get("TERRAZZO_MAX_BODY_MB", "1")) * (1 << 20))
+    idle_timeout_s = float(os.environ.get("TERRAZZO_IDLE_TIMEOUT_S", "30"))
+    tls_cert = tls_cert or os.environ.get("TERRAZZO_TLS_CERT")
+    tls_key = tls_key or os.environ.get("TERRAZZO_TLS_KEY")
+    scheme = "https" if tls_cert else "http"
     httpd = BoundedThreadingHTTPServer(
         (host, port),
         make_handler(runtime, api_key=api_key, rate_limit_rps=rate_limit_rps,
                      request_timeout_s=request_timeout_s,
-                     max_body_bytes=max_body_bytes),
+                     max_body_bytes=max_body_bytes,
+                     idle_timeout_s=idle_timeout_s),
         max_concurrent=max_concurrent)
+    if tls_cert:
+        import ssl
+
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(certfile=tls_cert, keyfile=tls_key)
+        httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
     print(f"[terrazzo] runtime={runtime.name} model={cfg.model}"
           + (" metal=on" if getattr(runtime, "use_metal", False) else ""), flush=True)
     if system_text:
         n = runtime.prefix.num_tokens if runtime.prefix else 0
         print(f"[terrazzo] system prefix registered: {n} tokens", flush=True)
-    print(f"[terrazzo] listening on http://{host}:{port}  (OpenAI compatible)"
+    print(f"[terrazzo] listening on {scheme}://{host}:{port}  (OpenAI compatible)"
           + ("  auth=on" if api_key else "") + (f"  rate_limit={rate_limit_rps}/s"
                                                if rate_limit_rps else "")
           + f"  max_concurrent={max_concurrent}"

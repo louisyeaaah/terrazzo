@@ -208,6 +208,28 @@ class Engine:
         with self._lock:
             return self.scheduler.abort(request_id)
 
+    def fail_streams(self, exc: BaseException) -> int:
+        """Terminate every waiting stream without touching the scheduler.
+
+        Used by the hang watchdog: the worker thread may be stuck inside MLX, so
+        calling scheduler.abort() from another thread would race the worker. The
+        HTTP side still needs terminal events for its in-flight requests.
+        """
+        with self._lock:
+            ids = list(self._streams)
+            for rid in ids:
+                queue_ = self._streams.pop(rid, None)
+                self._outputs.pop(rid, None)
+                self._inserted.pop(rid, None)
+                if queue_ is not None:
+                    try:
+                        queue_.put({"request_id": rid, "token_ids": [], "finished": True,
+                                    "finish_reason": "error",
+                                    "error": f"{type(exc).__name__}: {exc}"})
+                    except Exception:
+                        pass
+            return len(ids)
+
     def handle_failure(self, exc: BaseException) -> int:
         """Fatal step error: terminate every in-flight request so no HTTP handler hangs.
 
