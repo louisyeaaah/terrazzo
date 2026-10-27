@@ -353,3 +353,58 @@ slow to finish in a reasonable window, so it was stopped before B/C/D. No hang w
 reproduced and no stack was captured. The original one-off hang remains an **open**
 reliability question; the next retry should run when external load is low and keep the
 full A/B/C/D 2-turn sequence.
+
+---
+
+## 13. Load-aware concurrency: cap4 ↔ cap16 in one process
+
+Question: with one model and one long-lived server, can a simple rule change the admission
+cap between 4 and 16 across `shared → mixed → shared` traffic and approach the per-phase
+oracle? The rule is intentionally small: window of 16 recent requests (admitted + pending),
+cache-hit ratio, average uncached prompt tokens, queue depth, memory usage; switches only
+when `avg_uncached ≥ 512` (mixed → cap4) or `avg_uncached ≤ 256` and `hit_ratio ≥ 0.5`
+(shared → cap16); 6 s minimum hold; low cap only affects new admissions.
+
+Implementation: `terrazzo/concurrency.py` (pure rule), `Engine.set_max_num_seqs`,
+`TERRAZZO_AUTO_CAP=1` in `EngineRuntime`, control endpoint `POST /v1/concurrency`
+(`TERRAZZO_ENABLE_CONTROL=1`), harness `bench/concurrency_switch.py`.
+All phases: 16 sessions, 1 turn × 64 tokens, 800 ms stagger (so later arrivals see the new
+cap), prewarmed 2k shared prefix, 50 ms admission settle. Load was elevated (~6) during the
+run; compare within the table, not to earlier low-load numbers.
+
+### 13.1 Shared → mixed → shared
+
+| arm | overall tok/s | shared-1 p50 / p95 | mixed p50 / p95 | shared-2 p50 / p95 | peak MLX |
+|---|---:|---:|---:|---:|---:|
+| fixed4 | **18.5** | 5.01 / 10.80 s | 51.01 / 88.81 s | 4.96 / 9.87 s | 18.7 GB |
+| fixed16 | 15.0 | 1.33 / 1.94 s | 83.84 / 120.38 s | 7.54 / 11.13 s | 40.8 GB |
+| oracle (16/4/16) | 16.9 | 1.50 / 2.32 s | 57.26 / 101.67 s | 1.43 / 2.24 s | 20.0 GB |
+| auto | 17.3 | 1.32 / 2.27 s | 59.25 / 100.76 s | 3.33 / 4.93 s | 20.0 GB |
+
+Auto decisions: cap16 during shared-1; one switch to 4 in mixed; one switch back to 16 in
+shared-2. No flapping. Auto tracks the oracle closely on shared-1/mixed (p50 within 2–4%,
+p95 within 1%), and sits between fixed caps on shared-2; fixed4 remains the aggregate
+throughput winner (18.5 vs 17.3 tok/s) because it avoids the high-cap mixed tail.
+
+### 13.2 Validation on reversed sequence (mixed → shared → mixed)
+
+| phase | cap after phase | tok/s | TTFT p50 | TTFT p95 |
+|---|---:|---:|---:|---:|
+| mixed | 4 | 8.7 | 53.51 s | 92.33 s |
+| shared | 16 | 41.9 | 2.84 s | 5.41 s |
+| mixed | 4 | 8.6 | 51.96 s | 93.21 s |
+
+The rule switched 4→16→4 in the unseen order and did not flip within a phase. This is one
+sequence; it supports the mechanism but is not a broad validation.
+
+### 13.3 Decision
+
+- Auto cap **works as an experimental mechanism** and approaches the phase oracle; it is
+  better than either fixed cap on at least one important axis (shared latency vs fixed4,
+  mixed tail vs fixed16).
+- It **does not dominate fixed4 overall** (fixed4 has higher aggregate throughput), so the
+  product default stays manual presets. `TERRAZZO_AUTO_CAP=1` is opt-in.
+- Switch loss is still visible (shared-2 p50 3.33 s vs oracle 1.43 s); earlier detection
+  would need admission-time signals, not just recent completed requests.
+- Next validation should use multiple unseen sequences and low load; do not tune thresholds
+  on the validation sequence.

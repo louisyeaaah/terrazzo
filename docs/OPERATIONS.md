@@ -63,6 +63,10 @@ Defaults are deliberately conservative; override with environment variables:
 | `TERRAZZO_TLS_CERT` / `TERRAZZO_TLS_KEY` | unset | serve HTTPS (same as `--tls-cert/--tls-key`) |
 | `TERRAZZO_ADMIT_SETTLE_MS` | 0 | wait this long for near-simultaneous arrivals before admitting a wave (batch/cost scheduling experiments use 50) |
 | `TERRAZZO_STACK_DUMP` | unset | `1` = register SIGUSR1; `kill -USR1 <pid>` dumps every thread stack to the server log (hang diagnosis) |
+| `TERRAZZO_ENABLE_CONTROL` | unset | `1` enables `POST /v1/concurrency` (`{"max_num_seqs": N}`) for experiments |
+| `TERRAZZO_AUTO_CAP` | unset | `1` enables the experimental cap4↔cap16 load-aware rule (opt-in; manual presets are the default) |
+| `TERRAZZO_AUTO_MIN_HOLD` | 6 | minimum seconds between cap changes |
+| `TERRAZZO_AUTO_HIT_HIGH` / `_HIT_LOW` | 0.75 / 0.55 | hit-ratio hysteresis (the rule also requires uncached length) |
 
 Auth is checked before the request body is read. A request that hits the deadline is
 aborted in the engine so it does not keep occupying KV. After three consecutive

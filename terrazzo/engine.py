@@ -180,6 +180,7 @@ class Engine:
         self.num_steps = 0
         self.request_stages = {"added": 0, "first_token": 0,
                                "finished": 0, "aborted": 0, "failed": 0}
+        self.concurrency_changes: list[dict] = []
         self.prefix_hit_tokens = 0
         self.prefix_recompute_skips = 0
         self.prefix_reuse_autos = 0
@@ -258,6 +259,17 @@ class Engine:
 
     def stream(self, request_id: str) -> "queue.Queue":
         return self._streams[request_id]
+
+    def set_max_num_seqs(self, n: int) -> int:
+        """Change the admission cap for *new* requests (running requests continue)."""
+        n = max(1, int(n))
+        with self._lock:
+            self.cfg.max_num_seqs = n
+            self.scheduler.cfg.max_num_seqs = n
+            self.concurrency_changes.append({"at": time.time(), "max_num_seqs": n})
+            if len(self.concurrency_changes) > 64:
+                self.concurrency_changes = self.concurrency_changes[-64:]
+        return n
 
     def abort(self, request_id: str) -> bool:
         with self._lock:
@@ -706,6 +718,8 @@ class Engine:
             st["prefix_cache"] = {"enabled": False,
                                   "reuse_policy": self.cfg.prefix_reuse}
         st["scheduler_policy"] = self.cfg.scheduler_policy
+        st["max_num_seqs"] = self.scheduler.cfg.max_num_seqs
+        st["concurrency_changes"] = list(self.concurrency_changes)
         st["request_stages"] = dict(self.request_stages)
         st["cost_model"] = self.cost_model.stats()
         c = dict(self._control_totals)

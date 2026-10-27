@@ -255,11 +255,12 @@ def run_workload(srv: dict, systems: list[str], turns: int, max_tokens: int,
             messages.append({"role": "user",
                              "content": f"Turn {turn + 1}: summarize the key points."})
             try:
+                started_at = time.perf_counter()
                 r = chat_stream(srv["base"], srv["model"], messages, max_tokens)
             except Exception as exc:  # keep other sessions running
                 errors.put(f"session {i} turn {turn}: {exc}")
                 return
-            r.update({"session": i, "turn": turn,
+            r.update({"session": i, "turn": turn, "started_at": started_at,
                       "group": "shared" if systems[i] == systems[0] else "unique"})
             with lock:
                 rows.append(r)

@@ -35,6 +35,7 @@ PURE_MODULES = [
     "tests.test_long_chat_prefix",
     "tests.test_execution_trace",
     "tests.test_cost_scheduling",
+    "tests.test_concurrency",
 ]
 
 

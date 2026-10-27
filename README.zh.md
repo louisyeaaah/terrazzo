@@ -131,7 +131,14 @@ KV 字节安排接纳顺序**（替代 FIFO）。这是有限的 cache/admission
   mixed 流量偏好约 4 槽，而 16 会话共享前缀偏好 16 槽（52.4 vs 38.7 tok/s）。因此一个固定 cap
   无法同时最优；调参数据和验证数据必须分开，未来对比要同时报告预选固定 cap 与每负载 oracle cap。
 - 产品路径：tuned FIFO 预设 `--profile agent`（16 槽，共享前缀）与 `--profile mixed`
-  （4 槽，shared+unique）是当前默认；cost 排序保留实验选项。自动选 cap 是研究问题，尚未实现。
+  （4 槽，shared+unique）是当前默认；cost 排序保留实验选项。自动 cap 以小实验形式实现，
+  入口 `TERRAZZO_AUTO_CAP=1`（含 SIGUSR1 诊断和 `/v1/concurrency` 控制端点）。
+- 自动 cap 实验（单进程 shared → mixed → shared）：简单规则（缓存命中/未缓存长度/队列/内存，
+  cap4↔cap16，6 秒保持）基本跟随每阶段 oracle——shared p50 1.32 vs 1.50 s，mixed p50 59.3 vs
+  57.3 s、p95 100.8 vs 101.7 s；明显优于固定 cap16 的 mixed 尾部（100.8 vs 120.4 s）和固定
+  cap4 的 shared p50（1.32 vs 5.01 s），但固定 cap4 的总吞吐仍更高（18.5 vs 17.3 tok/s）。
+  反向 mixed→shared→mixed 序列验证了 4→16→4 切换且不抖动。自动模式保持 **opt-in**；
+  在更多序列验证前，手动预设仍是产品默认。
 - 全共享前缀、8 会话 × 2 轮、8k 长提示都没有排序收益；前缀缓存本身仍是最大杠杆。
 
 调度器仍不能控制执行器的 prefill 预算（调度 16.4k vs 实际 41.2k prompt tokens，2.5×），
@@ -229,7 +236,7 @@ BENCHMARKS.md      所有测量数据，包括输掉的那些
 ## 测试与基准
 
 ```bash
-python -m unittest discover -s tests                  # 核心套件（240 个测试，1 skipped）
+python -m unittest discover -s tests                  # 核心套件（245 个测试，1 skipped）
 python -m unittest discover -s experiments/tests -v   # 实验内核（31 个测试）
 python scripts/ci_core_tests.py                       # MLX 被 block 的纯 Python 子集
 bash bench/head_to_head.sh                            # 与 Ollama 的 head-to-head

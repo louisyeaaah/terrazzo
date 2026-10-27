@@ -98,6 +98,12 @@ class BaseRuntime:
         """Pre-register a system prompt as a shared prefix (Ollama-style "load")."""
         raise NotImplementedError("this runtime has no prefix cache")
 
+    def concurrency(self) -> int | None:
+        return None
+
+    def set_concurrency(self, n: int) -> int:
+        raise NotImplementedError("this runtime has no adjustable admission cap")
+
     # ---------------------------------------------------------------- watchdog
     def _start_watchdog(self) -> None:
         """Start the hang watchdog; worker loops must update ``_last_progress``."""
@@ -227,6 +233,19 @@ class EngineRuntime(BaseRuntime):
         # cost-aware scheduler actually sees the whole wave (0 keeps legacy behaviour)
         self.admit_settle_ms = float(os.environ.get("TERRAZZO_ADMIT_SETTLE_MS", "0"))
         self._pending_since = 0.0
+        # load-aware cap selector (experimental): only changes admissions
+        from .concurrency import AutoCap, AutoCapConfig
+
+        self.auto_cap = None
+        if os.environ.get("TERRAZZO_AUTO_CAP") == "1":
+            cfg = AutoCapConfig(
+                min_hold_s=float(os.environ.get("TERRAZZO_AUTO_MIN_HOLD", "6")),
+                hit_high=float(os.environ.get("TERRAZZO_AUTO_HIT_HIGH", "0.75")),
+                hit_low=float(os.environ.get("TERRAZZO_AUTO_HIT_LOW", "0.55")),
+            )
+            self.auto_cap = AutoCap(cfg, current=cfg.high_cap)
+            self._auto_last_eval = 0.0
+            self._auto_inputs = {"hit_ratio": 0.0, "queue": 0, "memory_ratio": 0.0}
         # memory guard: reject instead of letting Metal run out of memory
         import mlx.core as mxc
         self._mx = mxc
@@ -304,6 +323,12 @@ class EngineRuntime(BaseRuntime):
             if time.time() - self._last_mem_check >= 1.0:
                 self._last_mem_check = time.time()
                 self._memory_check()
+            if self.auto_cap is not None and time.time() - self._auto_last_eval >= 1.0:
+                self._auto_last_eval = time.time()
+                try:
+                    self._auto_cap_tick()
+                except Exception:
+                    pass
             if self._pending_count():
                 idle = not self.engine.has_unfinished()
                 if (idle and self.admit_settle_ms > 0
@@ -545,6 +570,58 @@ class EngineRuntime(BaseRuntime):
             raise box["error"]
         return box.get("result")
 
+    def concurrency(self) -> int | None:
+        engine = getattr(self, "engine", None)
+        return engine.scheduler.cfg.max_num_seqs if engine is not None else None
+
+    def set_concurrency(self, n: int) -> int:
+        return self._run_on_worker(lambda: self.engine.set_max_num_seqs(n))
+
+    def _auto_cap_tick(self) -> None:
+        engine = getattr(self, "engine", None)
+        if engine is None or self.auto_cap is None:
+            return
+        # Recent admitted requests are biased by the current cap: with cap4 a mixed
+        # phase can show only cached requests while unique ones wait outside the
+        # engine. Include the pending queue so the decision sees the real mix.
+        costs = list(engine._request_costs.values())[-self.auto_cap.cfg.window:]
+        try:
+            with self._pending_lock:
+                slots = list(self._pending)
+            cache = getattr(engine, "prefix_cache", None)
+            for slot in slots[:self.auto_cap.cfg.window]:
+                ids = slot.get("prompt_ids") or []
+                if not ids:
+                    continue
+                cached = 0
+                if cache is not None:
+                    hitp = cache.peek(ids)
+                    if hitp is not None:
+                        cached = hitp[1]
+                costs.append({"prompt_tokens": len(ids),
+                              "cached_estimate": cached,
+                              "uncached_estimate": len(ids) - cached})
+        except Exception:
+            pass
+        hit, avg_uncached, samples = self.auto_cap.observe_inputs(costs)
+        queue = len(engine.scheduler.waiting) + self._pending_count()
+        cap_mb = self.memory_cap_mb or 1.0
+        mem_ratio = 0.0
+        try:
+            mem_ratio = (self._mx.get_active_memory() / 1e6) / max(cap_mb, 1.0)
+        except Exception:
+            pass
+        self._auto_inputs = {"hit_ratio": round(hit, 3), "avg_uncached": avg_uncached,
+                             "samples": samples, "queue": queue,
+                             "memory_ratio": round(mem_ratio, 3)}
+        target = self.auto_cap.decide(now=time.monotonic(), hit_ratio=hit,
+                                      avg_uncached=avg_uncached, queue=queue,
+                                      memory_ratio=mem_ratio, samples=samples)
+        if target is not None:
+            engine.set_max_num_seqs(target)
+            print(f"[auto-cap] -> {target} (hit={hit:.2f} uncached={avg_uncached} "
+                  f"queue={queue} mem={mem_ratio:.2f})", flush=True)
+
     def prewarm(self, system_text: str) -> dict:
         """Register a system prompt now so the first request already hits the cache."""
         if not system_text or not system_text.strip():
@@ -574,6 +651,11 @@ class EngineRuntime(BaseRuntime):
                               "peak_active_mb": round(self._mem_peak_mb, 1),
                               "mlx_allocator_limit": self._mlx_limits}
         st["worker"] = self._worker_stats()
+        if self.auto_cap is not None:
+            st["auto_concurrency"] = {**self.auto_cap.stats(),
+                                      "inputs": dict(self._auto_inputs)}
+        else:
+            st["auto_concurrency"] = {"enabled": False}
         st.update(self._memory_stats())
         return st
 
@@ -721,6 +803,11 @@ class PagedRuntime(BaseRuntime):
         st["auto_prefix"] = {"enabled": self.auto_prefix, **self._auto_prefix_stats}
         st["prefix_registered_tokens"] = self.prefix.num_tokens if self.prefix else 0
         st["worker"] = self._worker_stats()
+        if self.auto_cap is not None:
+            st["auto_concurrency"] = {**self.auto_cap.stats(),
+                                      "inputs": dict(self._auto_inputs)}
+        else:
+            st["auto_concurrency"] = {"enabled": False}
         st.update(self._memory_stats())
         return st
 
@@ -865,6 +952,11 @@ class PoolRuntime(BaseRuntime):
         st["auto_prefix"] = {"enabled": self.auto_prefix, **self._auto_prefix_stats}
         st["prefix_registered_tokens"] = self.prefix.num_tokens if self.prefix else 0
         st["worker"] = self._worker_stats()
+        if self.auto_cap is not None:
+            st["auto_concurrency"] = {**self.auto_cap.stats(),
+                                      "inputs": dict(self._auto_inputs)}
+        else:
+            st["auto_concurrency"] = {"enabled": False}
         st.update(self._memory_stats())
         return st
 
@@ -1557,6 +1649,32 @@ def make_handler(runtime: BaseRuntime, *, api_key: str | None = None,
                     self._json(400, {"error": {"type": "invalid_request", "message": str(exc)}})
                     return
                 self._json(200, {"status": "prewarmed", **result})
+                return
+            if self.path == "/v1/concurrency":
+                if os.environ.get("TERRAZZO_ENABLE_CONTROL") != "1":
+                    self._json(404, {"error": {"type": "control_disabled",
+                                               "message": "set TERRAZZO_ENABLE_CONTROL=1"}})
+                    return
+                try:
+                    n = int(body.get("max_num_seqs"))
+                except Exception:
+                    self._json(400, {"error": {"type": "invalid_request",
+                                               "message": "max_num_seqs must be an integer"}})
+                    return
+                if not 1 <= n <= 256:
+                    self._json(400, {"error": {"type": "invalid_request",
+                                               "message": "max_num_seqs out of range"}})
+                    return
+                try:
+                    applied = runtime.set_concurrency(n)
+                except NotImplementedError as exc:
+                    self._json(501, {"error": {"type": "unsupported", "message": str(exc)}})
+                    return
+                except TimeoutError as exc:
+                    self._json(504, {"error": {"type": "timeout", "message": str(exc)}})
+                    return
+                self._json(200, {"max_num_seqs": applied,
+                                 "current": runtime.concurrency()})
                 return
             if not rate_ok():
                 self.send_response(429)
