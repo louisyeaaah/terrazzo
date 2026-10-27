@@ -86,14 +86,8 @@ class PagedPrefixCache:
         self.num_evictions = 0
 
     # ------------------------------------------------------------------ lookup
-    def lookup(self, prompt_tokens: list[int]) -> tuple[SharedPrefix, int] | None:
-        """Longest *shareable block prefix* of ``prompt_tokens``.
-
-        Unlike v0.2 this does not require the prompt to contain a whole cached
-        prefix: it walks the block hash chain and stops at the first block that is
-        not in the cache, so a prompt that diverges after 3 of 8 cached blocks
-        still shares those 3 blocks (``hit_len`` is returned separately).
-        """
+    def _match(self, prompt_tokens: list[int]) -> tuple[SharedPrefix, int] | None:
+        """Longest shareable block prefix, without mutating LRU/stats."""
         bs = self.block_manager.block_size
         hashes = self.block_manager.hash_chain(prompt_tokens)
         best: tuple[SharedPrefix, int] | None = None
@@ -107,6 +101,21 @@ class PagedPrefixCache:
             if entry_idx != idx:  # same hash must sit at the same block position
                 break
             best = (entry, (idx + 1) * bs)
+        return best
+
+    def peek(self, prompt_tokens: list[int]) -> tuple[SharedPrefix, int] | None:
+        """Inspect a potential hit for the cost model without counting it."""
+        return self._match(prompt_tokens)
+
+    def lookup(self, prompt_tokens: list[int]) -> tuple[SharedPrefix, int] | None:
+        """Longest *shareable block prefix* of ``prompt_tokens``.
+
+        Unlike v0.2 this does not require the prompt to contain a whole cached
+        prefix: it walks the block hash chain and stops at the first block that is
+        not in the cache, so a prompt that diverges after 3 of 8 cached blocks
+        still shares those 3 blocks (``hit_len`` is returned separately).
+        """
+        best = self._match(prompt_tokens)
         if best is None:
             self.num_misses += 1
             return None

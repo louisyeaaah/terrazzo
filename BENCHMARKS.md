@@ -1848,7 +1848,7 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
   cache 方法是否存在，失败给出明确错误；`TERRAZZO_SKIP_MLX_LM_CHECK=1` 仅用于试验新版本。
 - `docs/COMPATIBILITY.md` 记录测试矩阵与不支持的平台。
 
-**当前测试**：核心 226 个（1 skipped）+ 实验内核 31 个；CI 两个主 job + 手动模型 E2E job（见 workflow）。
+**当前测试**：核心 239 个（1 skipped）+ 实验内核 31 个；CI 两个主 job + 手动模型 E2E job（见 workflow）。
 
 ## 45. Tools / function calling（2026-10-27）
 
@@ -1874,7 +1874,7 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
 
 关键修复：带 tools 时默认 `enable_thinking=false`（原来 `<think>` 把 token 预算吃光，
 128 token 内根本到不了 `<tool_call>`）；OpenAI 报文中 assistant `content:null` 需规范化为空串，
-否则 Jinja 模板抛 `'NoneType' is not iterable`。全套 **226 个核心测试 OK（1 skipped）+ 31 个实验内核测试**（§47 后）。
+否则 Jinja 模板抛 `'NoneType' is not iterable`。全套 **239 个核心测试 OK（1 skipped）+ 31 个实验内核测试**（§47 后）。
 
 ## 47. 残余风险修复（2026-10-27）
 
@@ -1900,8 +1900,8 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
 - Ollama 原生模式默认 `think=false`：qwen3 在 Ollama 默认开启思考会把 content 吃空、多轮历史失真。
 
 **修复后验证（commit `fbbdcb0`）**：
-- 本地：核心 **226 tests（1 skipped）**、实验内核 **31 tests（3 skipped）**、纯 Python（MLX blocked）
-  **129 run / 0 fail / 8 skip**。
+- 本地：核心 **239 tests（1 skipped）**、实验内核 **31 tests（3 skipped）**、纯 Python（MLX blocked）
+  **142 run / 0 fail / 9 skip**。
 - CI（[run 40426254576](https://github.com/louisyeaaah/terrazzo/actions/runs/40426254576)）：
   `Core tests (pure Python, MLX blocked)` ✅、`macOS (MLX) import + tests`（含 Metal kernel 与
   experiments）✅；`Model E2E` 仅在手动 `workflow_dispatch` 时运行（本次按预期 skipped）。
@@ -1992,3 +1992,61 @@ python bench/agent_workload.py --base http://127.0.0.1:PORT --model ... --sessio
 
 **结论更新**：README 里的性能叙事以 §48 为准——对 Ollama 仍是 decode 1.5× / agent 1.8–2.2× /
 预注册首 token 10–50×；对 vLLM-Metal 只在单流与 4 会话占优，16 会话吞吐与时延落后。
+
+## 49. Phase 0/1：缓存感知的接纳顺序实验（2026-10-27）
+
+完整协议与 caveat：[docs/CO-DESIGN.md](docs/CO-DESIGN.md)。这里只放断言级数字。
+
+### 49.1 控制边界（16 会话、2k 共享前缀、1 turn、combined arm）
+
+| 指标 | 数值 |
+|---|---:|
+| 调度器预定的 prefill tokens | 16,401 |
+| 执行器实际处理的 prompt tokens | 41,217 |
+| actual / scheduled | **2.51×** |
+| 有 prefill 的 step 中出现 token 不一致 | 11 / 11 |
+| scheduled decode tokens / actual | 1,032 / 1,032 |
+
+结论：**接纳/顺序可控，prefill 预算不可控**。`insert_segments` 不能当动态 chunk 控制；
+`max_tokens` 是输出上限，不是本轮计算预算。缓存命中时比例进一步恶化（mixed 运行中
+cache 臂 1.43–1.46，no-cache FIFO 为 1.00）。
+
+### 49.2 A/B/C/D（16 会话 × 1 turn；mixed = 8 共享 + 8 独有前缀）
+
+| workload | arm | tok/s | TTFT p50 | TTFT p95 | p95 total | slowest | peak MLX |
+|---|---|---:|---:|---:|---:|---:|---:|
+| mixed run1 | B cache+FIFO | 11.7 | 70.87 s | 73.76 s | 87.32 s | 87.46 s | 34.5 GB |
+| mixed run1 | D cache+cost | **15.6** | **44.47 s** | **56.96 s** | **65.74 s** | **65.74 s** | **17.7 GB** |
+| mixed run2 | B cache+FIFO | 11.1 | 56.66 s | 81.48 s | 92.28 s | 92.44 s | 34.5 GB |
+| mixed run2 | D cache+cost | **12.5** | **47.07 s** | **69.84 s** | **81.75 s** | **81.87 s** | **19.9 GB** |
+| shared | B cache+FIFO | 89.5 | 2.54 s | 2.95 s | 11.44 s | 11.44 s | 9.83 GB |
+| shared | D cache+cost | 87.5 | 2.73 s | 3.16 s | 11.70 s | 11.70 s | 9.83 GB |
+| 8×2 mixed | B cache+FIFO | 17.4 | 11.31 s | 40.27 s | 49.88 s | 58.87 s | 19.3 GB |
+| 8×2 mixed | D cache+cost | 17.3 | 10.64 s | 39.78 s | 49.28 s | 59.10 s | 18.5 GB |
+| long 4×1 | B cache+FIFO | 40.0 | 1.09 s | 1.09 s | 6.39 s | 6.39 s | 10.5 GB |
+| long 4×1 | D cache+cost | 37.4 | 1.10 s | 1.10 s | 6.84 s | 6.84 s | 10.5 GB |
+
+- 混合 16×1 的 D vs B 在两个独立 run 中方向一致：吞吐 +13–33%，p95 TTFT −14–23%，
+  p95 完成时间 −11–25%，峰值内存 −42–49%，最慢会话也没有变差。
+- 全共享前缀、8×2、8k 长提示都没有额外收益；C 无缓存时 ≈ A，说明**起作用的输入是缓存命中信息**，
+  不是“排序”本身。
+- 8k 前缀预注册成本约 32 s，必须摊销；长提示的收益全部来自缓存。
+
+### 49.3 复用策略开关（mixed 16×1）
+
+| variant | tok/s | TTFT p50 | TTFT p95 | peak MLX |
+|---|---:|---:|---:|---:|
+| D auto | 12.5 | 47.57 s | 70.26 s | 19.9 GB |
+| D-fixed | 12.1 | 43.65 s | 74.57 s | 25.3 GB |
+| D-always | 12.3 | 42.19 s | 73.81 s | 19.5 GB |
+| D-never | 7.3 | 116.32 s | 130.11 s | 21.1 GB |
+
+在这个前缀长度下，auto copy-or-recompute 没有显出优势；always/fixed 与 auto 在噪声内，
+never 明显变差。**不能把 copy-or-recompute 当成已验证的机制。**
+
+### 49.4 决策
+
+1. 该机制有真实但很窄的收益（16×1 mixed），不足以称为协同优化引擎；
+2. 调度器仍不能控制执行器 prefill 预算，任何更强结论都需要先做受控执行器；
+3. 不启动 kernel/物理共享重写——数据不支持；
+4. 16×2 共享前缀运行曾挂起一次（health 无响应），未定位，需在 production claim 前解决。

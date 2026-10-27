@@ -20,6 +20,7 @@ from __future__ import annotations
 import queue
 import threading
 import time
+from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 
 from .blocks import BlockManager, BlockManagerConfig
@@ -49,6 +50,12 @@ class EngineConfig:
     # skip storing a snapshot when an existing entry already shares this many tokens
     # (agent traffic: every session sends the same system prompt, different user turn)
     prefix_dedupe_min_tokens: int = 1024
+    # auto: copy only when cheaper than recomputing the cached span (see cost.py)
+    prefix_reuse: str = "auto"          # auto | always | never
+    scheduler_policy: str = "fifo"      # fifo | cost
+    scheduler_aging_tokens_per_s: float = 100.0
+    memory_cost_weight: float = 0.1     # cost policy: predicted KV tokens weight
+    cost_calibration: bool = True       # update the predicted-cost model from steps
     # executor
     completion_batch_size: int = 8
     prefill_batch_size: int = 8
@@ -132,9 +139,16 @@ class Engine:
                 max_num_seqs=self.cfg.max_num_seqs,
                 max_model_len=self.cfg.max_model_len,
                 stop_preempted_request=self.cfg.stop_preempted_request,
+                policy=self.cfg.scheduler_policy,
+                aging_tokens_per_s=self.cfg.scheduler_aging_tokens_per_s,
+                memory_cost_weight=self.cfg.memory_cost_weight,
             ),
             self.block_manager,
         )
+        from .cost import CostModel, kv_bytes_per_token
+
+        self.cost_model = CostModel(
+            kv_bytes_per_token=kv_bytes_per_token(self.cfg.model) or 0)
         self.prefix_cache = (
             PagedPrefixCache(
                 self.block_manager,
@@ -165,6 +179,21 @@ class Engine:
         # metrics
         self.num_steps = 0
         self.prefix_hit_tokens = 0
+        self.prefix_recompute_skips = 0
+        self.prefix_reuse_autos = 0
+        # Phase-0 instrumentation: scheduler decision vs executor reality.
+        self._exec_trace: deque[dict] = deque(maxlen=512)
+        self._first_prefill_steps: list[dict] = []
+        # bounded request -> predicted cost (for explaining scheduling decisions)
+        self._request_costs: OrderedDict[str, dict] = OrderedDict()
+        self._step_prompt_tokens = 0
+        self._step_decode_tokens = 0
+        self._control_totals = {
+            "steps": 0, "scheduled_prefill_tokens": 0, "actual_prompt_tokens": 0,
+            "scheduled_decode_tokens": 0, "actual_decode_tokens": 0,
+            "scheduled_prefill_requests": 0, "inserted_prefill_requests": 0,
+            "steps_with_prefill": 0, "steps_with_mismatch": 0,
+        }
         self.num_prefill_tokens = 0
         self.num_decode_tokens = 0
         self.step_times: list[float] = []
@@ -198,6 +227,29 @@ class Engine:
                 request_id=rid, num_prompt_tokens=len(ids)
             )
             self._streams[rid] = queue.Queue()
+            cached_est, snapshot_bytes = 0, 0
+            if self.prefix_cache is not None:
+                hit = self.prefix_cache.peek(ids)
+                if hit is not None:
+                    prefix_est, cached_est = hit
+                    snapshot_bytes = prefix_est.nbytes
+            cost = self.cost_model.estimate(
+                len(ids), cached_est, snapshot_bytes, policy=self.cfg.prefix_reuse)
+            seq.estimated_uncached_tokens = cost.uncached_tokens
+            seq.estimated_kv_bytes = int(len(ids) * self.cost_model.kv_bytes_per_token)
+            # cached prefix blocks are shared; only the suffix + generated tokens
+            # are new KV for this request
+            new_tokens = (len(ids) - cached_est if cost.reuse else len(ids))
+            seq.estimated_kv_tokens = int(new_tokens + params.max_tokens)
+            self._request_costs[rid] = {
+                "prompt_tokens": len(ids),
+                "cached_estimate": int(cached_est),
+                "uncached_estimate": int(cost.uncached_tokens),
+                "kv_tokens": int(seq.estimated_kv_tokens),
+                "reuse_estimate": bool(cost.reuse),
+            }
+            if len(self._request_costs) > 256:
+                self._request_costs.popitem(last=False)
             self.scheduler.add(seq)
             return seq
 
@@ -262,7 +314,9 @@ class Engine:
             t0 = time.perf_counter()
             outs = self.scheduler.schedule()
             self._apply_preemptions(outs)
-            self._insert_new(outs)
+            self._step_prompt_tokens = 0
+            self._step_decode_tokens = 0
+            inserted, cache_before = self._insert_new(outs)
 
             if self.scheduler.num_unfinished == 0:
                 self._collect_finished()
@@ -273,8 +327,12 @@ class Engine:
             deltas += self._process_generation_responses(generation_responses)
             self._collect_finished()
 
+            elapsed = time.perf_counter() - t0
             self.num_steps += 1
-            self.step_times.append(time.perf_counter() - t0)
+            self.step_times.append(elapsed)
+            if self.cfg.cost_calibration:
+                self.cost_model.observe_step(outs.num_prefill_tokens, elapsed)
+            self._record_exec_trace(outs, inserted, cache_before, elapsed)
             return deltas
 
     def _apply_preemptions(self, outs: SchedulerOutputs) -> None:
@@ -288,20 +346,34 @@ class Engine:
                 except Exception:
                     pass
 
-    def _insert_new(self, outs: SchedulerOutputs) -> None:
+    def _insert_new(self, outs: SchedulerOutputs):
+        cache_before = self._cache_counters()
+        inserted: list[str] = []
         for chunk in outs.chunks:
             seq = chunk.seq
             if not chunk.is_prefill or seq.request_id in self._inserted:
                 continue
             cache, cached_tokens = None, 0
             if self.prefix_cache is not None:
-                hit = self.prefix_cache.lookup(seq.prompt_token_ids)
+                hit = self.prefix_cache.peek(seq.prompt_token_ids)
                 if hit is not None:
                     prefix, cached_tokens = hit
-                    cache = self._seed_caches(prefix, cached_tokens)
-                    seq.cached_prompt_tokens = cached_tokens
-                    seq.prefix_blocks = []  # blocks are owned by the shared prefix
-                    self.prefix_hit_tokens += cached_tokens
+                    decision = self.cost_model.estimate(
+                        seq.prompt_len, cached_tokens, prefix.nbytes,
+                        policy=self.cfg.prefix_reuse)
+                    if decision.reuse:
+                        # consume the hit (stats + LRU) only when we actually reuse it
+                        confirmed = self.prefix_cache.lookup(seq.prompt_token_ids)
+                        if confirmed is not None:
+                            prefix, cached_tokens = confirmed
+                        cache = self._seed_caches(prefix, cached_tokens)
+                        seq.cached_prompt_tokens = cached_tokens
+                        seq.prefix_blocks = []  # blocks are owned by the shared prefix
+                        self.prefix_hit_tokens += cached_tokens
+                        self.prefix_reuse_autos += 1
+                    else:
+                        self.prefix_recompute_skips += 1
+                        cached_tokens = 0
             try:
                 uid = self.runner.insert(seq, cache=cache, cached_tokens=cached_tokens)
             except Exception:
@@ -314,6 +386,53 @@ class Engine:
                 else:
                     raise
             self._inserted[seq.request_id] = uid
+            inserted.append(seq.request_id)
+        return inserted, cache_before
+
+    def _cache_counters(self) -> dict:
+        c = self.prefix_cache
+        if c is None:
+            return {"hits": 0, "stores": 0, "skips": 0, "hit_tokens": 0}
+        return {"hits": c.num_hits, "stores": c.num_stores,
+                "skips": self.prefix_recompute_skips,
+                "hit_tokens": self.prefix_hit_tokens}
+
+    def _record_exec_trace(self, outs: SchedulerOutputs, inserted: list[str],
+                           cache_before: dict, elapsed: float) -> None:
+        cache_now = self._cache_counters()
+        prefill_chunks = [c for c in outs.chunks if c.is_prefill]
+        actual_prompt = self._step_prompt_tokens
+        actual_decode = self._step_decode_tokens
+        t = {
+            "step": self.num_steps,
+            "scheduled_prefill_tokens": outs.num_prefill_tokens,
+            "scheduled_decode_tokens": outs.num_decode_tokens,
+            "scheduled_prefill_requests": len(prefill_chunks),
+            "inserted_prefill_requests": len(inserted),
+            "actual_prompt_tokens": actual_prompt,
+            "actual_decode_tokens": actual_decode,
+            "step_ms": round(elapsed * 1000, 2),
+            "cache_hits": cache_now["hits"] - cache_before["hits"],
+            "cache_stores": cache_now["stores"] - cache_before["stores"],
+            "cache_skips": cache_now["skips"] - cache_before["skips"],
+            "scheduled_ids": [c.seq.request_id for c in prefill_chunks],
+            "inserted_ids": list(inserted),
+        }
+        self._exec_trace.append(t)
+        if prefill_chunks and len(self._first_prefill_steps) < 12:
+            self._first_prefill_steps.append(t)
+        c = self._control_totals
+        c["steps"] += 1
+        c["scheduled_prefill_tokens"] += outs.num_prefill_tokens
+        c["actual_prompt_tokens"] += actual_prompt
+        c["scheduled_decode_tokens"] += outs.num_decode_tokens
+        c["actual_decode_tokens"] += actual_decode
+        c["scheduled_prefill_requests"] += len(prefill_chunks)
+        c["inserted_prefill_requests"] += len(inserted)
+        if prefill_chunks:
+            c["steps_with_prefill"] += 1
+            if actual_prompt != outs.num_prefill_tokens:
+                c["steps_with_mismatch"] += 1
 
     def _seed_caches(self, prefix: SharedPrefix, hit_len: int) -> list:
         """Per-layer MLX KVCache objects pre-seeded with the shared prefix.
@@ -362,16 +481,17 @@ class Engine:
             if seq is None:
                 continue
             processed, total = getattr(r, "progress", (0, 0))
-            seq.num_computed_prompt_tokens = max(seq.num_computed_prompt_tokens, processed)
-            if getattr(r, "end_of_prompt", False):
-                seq.num_computed_prompt_tokens = seq.prompt_len
+            prev = seq.num_computed_prompt_tokens
+            end = bool(getattr(r, "end_of_prompt", False))
+            new = seq.prompt_len if end else max(prev, processed)
+            delta = max(0, new - prev)
+            seq.num_computed_prompt_tokens = new
+            self._step_prompt_tokens += delta
+            if end:
                 self.num_prefill_tokens += seq.prompt_len - seq.cached_prompt_tokens
                 self._maybe_store_prefix(seq, self.runner.extract_cache(seq))
             else:
-                # `processed` is cumulative for the request, so count only the delta
-                prev = seq.num_computed_prompt_tokens
-                seq.num_computed_prompt_tokens = max(prev, processed)
-                self.num_prefill_tokens += max(0, processed - prev)
+                self.num_prefill_tokens += delta
         return deltas
 
     def _maybe_store_prefix(self, seq: Sequence, prompt_cache=None) -> None:
@@ -432,6 +552,7 @@ class Engine:
             token = int(r.token)
             seq.append_token(token, seq.sampling_params.max_tokens)
             self.num_decode_tokens += 1
+            self._step_decode_tokens += 1
             finish_reason = r.finish_reason
             if finish_reason == "stop" and seq.status == SequenceStatus.RUNNING:
                 seq.finish("stop")
@@ -562,6 +683,21 @@ class Engine:
         st["mlx_lm_version"] = getattr(self, "_mlx_lm_version", None)
         if self.prefix_cache is not None:
             st["prefix_cache"] = self.prefix_cache.stats()
+            st["prefix_cache"]["reuse_policy"] = self.cfg.prefix_reuse
+            st["prefix_cache"]["recompute_skips"] = self.prefix_recompute_skips
+            st["prefix_cache"]["reuse_autos"] = self.prefix_reuse_autos
+        else:
+            st["prefix_cache"] = {"enabled": False,
+                                  "reuse_policy": self.cfg.prefix_reuse}
+        st["scheduler_policy"] = self.cfg.scheduler_policy
+        st["cost_model"] = self.cost_model.stats()
+        c = dict(self._control_totals)
+        c["actual_to_scheduled_prompt_ratio"] = round(
+            c["actual_prompt_tokens"] / max(1, c["scheduled_prefill_tokens"]), 3)
+        c["last_steps"] = list(self._exec_trace)[-20:]
+        c["first_prefill_steps"] = list(self._first_prefill_steps)
+        c["requests"] = list(self._request_costs.items())[-64:]
+        st["execution_control"] = c
         return st
 
     def close(self) -> None:

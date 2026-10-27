@@ -201,3 +201,25 @@ the ported scheduler adds correctness and control, not throughput. The 1.35× ga
 Ollama on a single request is kernel quality (MLX 4-bit vs llama.cpp Q4_K_M), not
 scheduler design — and that gap closes to ~1.0× at 8-way concurrency, exactly as
 predicted in `../deepinfer-study/DeepInfer-vs-Ollama-实测.md`.
+
+## Co-design Phase 0/1: what the scheduler actually controls
+
+`Engine` now records per-step `execution_control` in `/stats`: scheduled request ids and
+prefill tokens, actual prompt tokens processed by the executor, decode counts, cache
+hits/stores/skips and step time.
+
+Measured on 16 shared-prefix sessions (2k prompt, 1 turn, cache + cost-aware arm):
+
+- scheduled prefill tokens: 16,401; executor actually processed 41,217 (2.51×);
+- 11 of 11 prefill steps had a token mismatch;
+- decode matched exactly (1,032 / 1,032).
+
+So `Scheduler` controls **admission and order**, but not the prefill budget:
+`MLXRunner` still hands the whole prompt to `mlx_lm` `BatchGenerator`, whose internal
+prefill chunking is independent of `SchedulerConfig`. `max_tokens` is the output limit,
+not a step budget, and `insert_segments` is not a dynamic chunk controller.
+
+Phase 1 therefore only tests the controllable mechanism: cache-hit-aware admission order.
+The result is a narrow but reproducible mixed-traffic p95 improvement; it is documented,
+with negative results and the control boundary, in [docs/CO-DESIGN.md](docs/CO-DESIGN.md)
+and BENCHMARKS §49. The project does not claim full algorithm–system co-optimization yet.

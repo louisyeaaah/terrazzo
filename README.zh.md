@@ -111,6 +111,22 @@ Ollama 为 45.2 / 43.6 / 38.0 tok/s。
 `bench/agent_workload.py`（完整命令、原始数据与 caveat 见 [BENCHMARKS.md](BENCHMARKS.md) §48）。
 早先表格里的数字（如 2.08× decode）来自有负载的机器，已被本轮取代。
 
+### 协同优化实验进展（2026-10-27）
+
+我验证了一个不写 kernel 也能把缓存和调度连起来的机制：**按预测的未缓存计算量 + 预测新增 KV 字节安排接纳顺序**（替代 FIFO）。结果是一个真实但很窄的收益：
+
+- 16 会话混合流量（8 个共享前缀 + 8 个独有前缀）：p95 TTFT 57–70 s，cache+FIFO 为 74–81 s；
+  MLX 峰值内存 18–20 GB vs 34.5 GB；吞吐 +13–33%。
+- 全共享前缀：无差异（预测成本相同）。
+- 8 会话 × 2 轮：无差异。
+- 8k 长提示：前缀缓存是全部收益，排序没有额外贡献。
+
+调度器仍然不能控制执行器的 prefill 预算：16 会话共享前缀时它调度了 16.4k prompt tokens，
+而 mlx-lm 的 `BatchGenerator` 实际处理了 41.2k（2.5×）。所以这**不能**称为算法-系统协同优化，
+只能叫“缓存感知的接纳顺序”实验。协议、每轮数字和 caveat 见
+[docs/CO-DESIGN.md](docs/CO-DESIGN.md)。另外 16 会话 × 2 轮曾挂起一次（health 无响应），
+尚未定位，没有隐藏。
+
 ## 快速开始
 
 ```bash
@@ -200,7 +216,7 @@ BENCHMARKS.md      所有测量数据，包括输掉的那些
 ## 测试与基准
 
 ```bash
-python -m unittest discover -s tests                  # 核心套件（226 个测试，1 skipped）
+python -m unittest discover -s tests                  # 核心套件（239 个测试，1 skipped）
 python -m unittest discover -s experiments/tests -v   # 实验内核（31 个测试）
 python scripts/ci_core_tests.py                       # MLX 被 block 的纯 Python 子集
 bash bench/head_to_head.sh                            # 与 Ollama 的 head-to-head

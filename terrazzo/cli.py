@@ -77,6 +77,11 @@ def _cfg(args):
         prefix_cache_bytes=(int(args.prefix_cache_mb * 1e6)
                             if getattr(args, "prefix_cache_mb", None) else budget),
         enable_prefix_cache=not args.no_prefix_cache,
+        prefix_reuse=getattr(args, "prefix_reuse", "auto"),
+        scheduler_policy=getattr(args, "scheduler_policy", "fifo"),
+        scheduler_aging_tokens_per_s=getattr(args, "scheduler_aging", 100.0),
+        memory_cost_weight=getattr(args, "memory_cost_weight", 0.1),
+        cost_calibration=not getattr(args, "no_cost_calibration", False),
         completion_batch_size=args.max_num_seqs,
     )
 
@@ -769,6 +774,22 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--max-model-len", type=int, default=32768, dest="max_model_len",
                         help="max prompt+output tokens per request (default 32768)")
         sp.add_argument("--no-prefix-cache", action="store_true")
+        sp.add_argument("--prefix-reuse", choices=["auto", "always", "never"], default="auto",
+                        dest="prefix_reuse",
+                        help="reuse a cached prefix only when copy beats recompute "
+                             "(auto), always, or never")
+        sp.add_argument("--scheduler-policy", choices=["fifo", "cost"], default="fifo",
+                        dest="scheduler_policy",
+                        help="fifo (default) or cost-aware admission order")
+        sp.add_argument("--scheduler-aging", type=float, default=100.0,
+                        dest="scheduler_aging",
+                        help="cost policy aging: prefill tokens credited per waiting second")
+        sp.add_argument("--memory-cost-weight", type=float, default=0.1,
+                        dest="memory_cost_weight",
+                        help="cost policy: weight of predicted new KV tokens")
+        sp.add_argument("--no-cost-calibration", action="store_true",
+                        dest="no_cost_calibration",
+                        help="freeze the predicted-cost rates at their defaults")
         sp.add_argument("--prefix-max-tokens", type=int, default=None,
                         dest="prefix_max_tokens",
                         help="cap a stored prefix snapshot (default 4096); raise for long chats")

@@ -60,6 +60,10 @@ class Sequence:
     preempt_count: int = 0
     num_scheduled_tokens: int = 0
     cached_prompt_tokens: int = 0
+    # cost-model hints filled by Engine.add_request (scheduler policy "cost")
+    estimated_uncached_tokens: int = 0
+    estimated_kv_bytes: int = 0
+    estimated_kv_tokens: int = 0
 
     # ------------------------------------------------------------- properties
     @property

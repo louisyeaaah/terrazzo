@@ -120,6 +120,26 @@ Reproduce with `bench/compare_ollama.py`, `bench/h2h_long_prompts.py --only all`
 `bench/agent_workload.py` (exact commands, raw rows and caveats: [BENCHMARKS.md](BENCHMARKS.md) §48).
 Earlier table rows (e.g. 2.08× decode) came from loaded-machine runs and are superseded.
 
+### Co-design status (2026-10-27)
+
+I also tested the one mechanism that could connect the cache and the scheduler without
+writing a kernel: **cache-hit-aware admission ordering** (order requests by predicted
+uncached work + predicted new KV bytes, instead of FIFO). It is a real but narrow result:
+
+- Mixed 16-session traffic (8 shared-prefix + 8 unique-prefix sessions): p95 TTFT 57–70 s
+  vs 74–81 s for cache+FIFO, peak MLX memory 18–20 GB vs 34.5 GB, throughput +13–33%.
+- Shared-prefix-only traffic: no difference (equal predicted cost).
+- 8 sessions × 2 turns: no difference.
+- Long 8k prompts: prefix caching dominates; ordering adds nothing.
+
+The scheduler still cannot control the executor's prefill budget: on 16 shared sessions it
+scheduled 16.4k prompt tokens while mlx-lm's `BatchGenerator` processed 41.2k (2.5×).
+So this is **not** claimed as an algorithm–system co-design breakthrough; it is a
+cache-aware admission-order experiment with a measured control boundary. Full protocol,
+per-run numbers and caveats: [docs/CO-DESIGN.md](docs/CO-DESIGN.md).
+A 16-session × 2-turn run also hung once (health endpoint stopped responding); that is
+unresolved and not hidden.
+
 ## Quickstart
 
 ```bash
@@ -211,7 +231,7 @@ BENCHMARKS.md      every measurement, including the ones that lost
 ## Tests and benchmarks
 
 ```bash
-python -m unittest discover -s tests                  # core suite (226 tests, 1 skipped)
+python -m unittest discover -s tests                  # core suite (239 tests, 1 skipped)
 python -m unittest discover -s experiments/tests -v   # experimental kernels (31 tests)
 python scripts/ci_core_tests.py                       # pure-Python subset with MLX blocked
 bash bench/head_to_head.sh                            # Ollama head-to-head
@@ -231,6 +251,7 @@ Benchmark numbers, dependency pins and the tested matrix are documented in
 - [BENCHMARKS.md](BENCHMARKS.md) — all benchmark data and negative results
 - [DESIGN.md](DESIGN.md) — what is ported and why
 - [Project page](https://louisyeaaah.github.io/terrazzo/) — measured results, honest positioning and quick start (also [中文](https://louisyeaaah.github.io/terrazzo/zh.html))
+- [docs/CO-DESIGN.md](docs/CO-DESIGN.md) — the cache/scheduler co-design experiment: control boundary, A/B/C/D ablation, negative results
 - [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) — pinned/tested MLX versions and the runtime-patch contract
 - [MAC-TURBO.md](MAC-TURBO.md) — MacTurbo: predicting reachable tok/s before serving
 

@@ -8,3 +8,5 @@ dist/
 .hf-cache/
 out/
 models/
+.hf-home/
+bench/co_design_results.json

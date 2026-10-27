@@ -86,9 +86,9 @@
           <div class="x">2.2× Ollama（40.6）</div>
         </div>
         <div class="stat" style="--accent: var(--green)">
-          <div class="k">226 <small>+ 31 测试</small></div>
+          <div class="k">239 <small>+ 31 测试</small></div>
           <div class="l">核心 + 实验内核</div>
-          <div class="x">CI 全绿 · 129 个纯 Python</div>
+          <div class="x">CI 全绿 · 142 个纯 Python</div>
         </div>
       </div>
       <div class="callout">
@@ -111,7 +111,7 @@
         <div class="t-item"><div class="d">服务化</div><h4>前缀缓存 + API</h4><p>精确共享前缀快照、<span class="mono">/v1/prewarm</span>、OpenAI + Ollama 接口、CLI 与 Modelfile。</p></div>
         <div class="t-item"><div class="d">Agent 修复</div><h4>16 会话 TTFT</h4><p>预注册 + <span class="mono">--profile agent</span> 把 16 会话 p50 首 token 从 <b>8–11 秒降到 2.56 秒</b>。</p></div>
         <div class="t-item"><div class="d">产品化</div><h4>v0.3.0 → Terrazzo</h4><p>模型管理、<span class="mono">terrazzo</span> CLI、中英文文档、固定依赖与 head-to-head 基准。</p></div>
-        <div class="t-item"><div class="d">加固</div><h4>Review 驱动的可靠性</h4><p>请求 deadline、body/并发上限、HTTP 加固、hang watchdog、TLS、<b>226 核心 + 31 内核测试</b>、Linux + macOS CI。</p></div>
+        <div class="t-item"><div class="d">加固</div><h4>Review 驱动的可靠性</h4><p>请求 deadline、body/并发上限、HTTP 加固、hang watchdog、TLS、<b>239 核心 + 31 内核测试</b>、Linux + macOS CI。</p></div>
         <div class="t-item"><div class="d">实测</div><h4>诚实的重新测量</h4><p>空闲机器 + 真 token 计数复测：decode <b>1.51×</b> Ollama、agent 吞吐 <b>2.2×</b>；16 会话 vLLM-Metal 领先。</p></div>
       </div>
     </div>
@@ -314,7 +314,7 @@
         </div>
         <div class="feature">
           <span class="ico terra" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5 3 12l5 7M16 5l5 7-5 7M14 4l-4 16"/></svg></span>
-          <div><h4>可靠的测试</h4><p>226 个核心测试 + 31 个内核测试、MLX-free CI job、固定 MLX 版本、runtime patch 兼容契约。</p></div>
+          <div><h4>可靠的测试</h4><p>239 个核心测试 + 31 个内核测试、MLX-free CI job、固定 MLX 版本、runtime patch 兼容契约。</p></div>
         </div>
       </div>
     </div>
@@ -394,7 +394,7 @@ curl localhost:8080/api/chat -d '{
         <h2 id="val-title">验证</h2>
       </div>
       <div class="validation">
-        <div class="vcard"><div class="n">核心套件</div><div class="v">226</div><div class="s">测试，1 skipped（需要模型）</div><a href="https://github.com/louisyeaaah/terrazzo/actions/workflows/ci.yml">CI 历史 ↗</a></div>
+        <div class="vcard"><div class="n">核心套件</div><div class="v">239</div><div class="s">测试，1 skipped（需要模型）</div><a href="https://github.com/louisyeaaah/terrazzo/actions/workflows/ci.yml">CI 历史 ↗</a></div>
         <div class="vcard"><div class="n">实验内核</div><div class="v">31</div><div class="s">测试，3 skipped</div><a href="https://github.com/louisyeaaah/terrazzo/tree/main/experiments">experiments ↗</a></div>
         <div class="vcard"><div class="n">纯 Python（MLX blocked）</div><div class="v">129</div><div class="s">在 Linux CI 上跑</div><a href="https://github.com/louisyeaaah/terrazzo/actions/workflows/ci.yml">workflow 记录 ↗</a></div>
         <div class="vcard"><div class="n">CI job</div><div class="v">3</div><div class="s">Linux、macOS+Metal、手动模型 E2E</div><a href="https://github.com/louisyeaaah/terrazzo/actions">actions ↗</a></div>

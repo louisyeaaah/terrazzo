@@ -61,6 +61,7 @@ Defaults are deliberately conservative; override with environment variables:
 | `TERRAZZO_HANG_TIMEOUT_S` | 120 | worker heartbeat timeout: mark unhealthy, fail outstanding requests, reject new ones |
 | `TERRAZZO_HANG_RESTART` | unset | `1` = exit(70) after a detected hang so a supervisor restarts the process |
 | `TERRAZZO_TLS_CERT` / `TERRAZZO_TLS_KEY` | unset | serve HTTPS (same as `--tls-cert/--tls-key`) |
+| `TERRAZZO_ADMIT_SETTLE_MS` | 0 | wait this long for near-simultaneous arrivals before admitting a wave (batch/cost scheduling experiments use 50) |
 
 Auth is checked before the request body is read. A request that hits the deadline is
 aborted in the engine so it does not keep occupying KV. After three consecutive

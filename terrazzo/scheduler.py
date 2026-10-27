@@ -21,6 +21,7 @@ Deliberate deviations (documented in DESIGN.md):
 
 from __future__ import annotations
 
+import time
 from collections import deque
 from dataclasses import dataclass, field
 
@@ -40,6 +41,12 @@ class SchedulerConfig:
     max_model_len: int = 32768
     # drop instead of recompute on preemption (DeepInfer: stop_preempted_request)
     stop_preempted_request: bool = False
+    # "fifo" keeps the DeepInfer queue order; "cost" orders by estimated remaining
+    # prefill work with aging so low-cost requests cannot starve long prompts
+    policy: str = "fifo"
+    aging_tokens_per_s: float = 100.0
+    # predicted memory increment contributes this much to the cost key
+    memory_cost_weight: float = 0.1
 
 
 @dataclass
@@ -121,6 +128,24 @@ class Scheduler:
         # 1) preemption first: make room before admitting anything
         self._maybe_preempt(out)
         preempted_ids = {s.request_id for s in out.preempted}
+
+        # 2) cost-aware admission order. FIFO is the default and preserves the
+        # historical DeepInfer behaviour; "cost" only changes *who goes first*,
+        # not the chunking/preemption mechanisms below.
+        if self.cfg.policy == "cost" and len(self.waiting) > 1:
+            now = time.perf_counter()
+            aging = self.cfg.aging_tokens_per_s
+            ordered = sorted(
+                self.waiting,
+                key=lambda s: (
+                    max(0.0, getattr(s, "estimated_uncached_tokens", s.prompt_len)
+                        + self.cfg.memory_cost_weight
+                        * getattr(s, "estimated_kv_tokens", 0)
+                        - aging * max(0.0, now - s.arrival_time)),
+                    s.arrival_time,
+                ),
+            )
+            self.waiting = deque(ordered)
 
         # 2) chunked prefill admission.
         #

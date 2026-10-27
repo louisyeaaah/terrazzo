@@ -220,6 +220,10 @@ class EngineRuntime(BaseRuntime):
         self._steps_since_admit = 0
         self.admit_batch_size = int(os.environ.get("TERRAZZO_ADMIT_BATCH", "4"))
         self.admit_wait_steps = int(os.environ.get("TERRAZZO_ADMIT_WAIT", "12"))
+        # collect near-simultaneous arrivals before admitting them as one batch, so a
+        # cost-aware scheduler actually sees the whole wave (0 keeps legacy behaviour)
+        self.admit_settle_ms = float(os.environ.get("TERRAZZO_ADMIT_SETTLE_MS", "0"))
+        self._pending_since = 0.0
         # memory guard: reject instead of letting Metal run out of memory
         import mlx.core as mxc
         self._mx = mxc
@@ -299,6 +303,14 @@ class EngineRuntime(BaseRuntime):
                 self._memory_check()
             if self._pending_count():
                 idle = not self.engine.has_unfinished()
+                if (idle and self.admit_settle_ms > 0
+                        and self._pending_count() < self.admit_batch_size):
+                    now = time.monotonic()
+                    if self._pending_since == 0.0:
+                        self._pending_since = now
+                    if now - self._pending_since < self.admit_settle_ms / 1000.0:
+                        time.sleep(0.005)
+                        continue
                 if (idle or self._pending_count() >= self.admit_batch_size
                         or self._steps_since_admit >= self.admit_wait_steps):
                     slots = self._drain_pending()
@@ -307,6 +319,7 @@ class EngineRuntime(BaseRuntime):
                     for slot in slots:
                         self._admit(slot)
                     self._steps_since_admit = 0
+                    self._pending_since = 0.0
                     continue
             if not self.engine.has_unfinished() and self._pending_count() == 0:
                 job = None
