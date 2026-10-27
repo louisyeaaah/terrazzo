@@ -207,6 +207,7 @@ h2 { margin: 0; font-size: clamp(24px, 3vw, 32px); letter-spacing: -0.02em; line
 
 /* tables */
 .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); }
+.table-wrap.compact table { min-width: 0; }
 table { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 620px; }
 th, td { padding: 11px 14px; text-align: right; border-bottom: 1px solid rgba(38, 48, 63, 0.7); white-space: nowrap; }
 th:first-child, td:first-child { text-align: left; }
