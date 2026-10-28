@@ -248,7 +248,7 @@ def build_systems(kind: str, sessions: int, system_tokens: int) -> tuple[list[st
 
 
 def run_workload(srv: dict, systems: list[str], turns: int, max_tokens: int,
-                 stagger_ms: float = 0.0) -> dict:
+                 stagger_ms: float = 0.0, user_template: str | None = None) -> dict:
     sessions = len(systems)
     if stagger_ms <= 0:
         barrier = threading.Barrier(sessions)
@@ -265,8 +265,11 @@ def run_workload(srv: dict, systems: list[str], turns: int, max_tokens: int,
         else:
             time.sleep(i * stagger_ms / 1000.0)
         for turn in range(turns):
-            messages.append({"role": "user",
-                             "content": f"Turn {turn + 1}: summarize the key points."})
+            if user_template is None:
+                user_content = f"Turn {turn + 1}: summarize the key points."
+            else:
+                user_content = user_template.format(session=i, turn=turn + 1)
+            messages.append({"role": "user", "content": user_content})
             try:
                 started_at = time.perf_counter()
                 r = chat_stream(srv["base"], srv["model"], messages, max_tokens)

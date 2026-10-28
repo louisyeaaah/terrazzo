@@ -256,23 +256,23 @@
       </p>
       <div class="table-wrap">
         <table aria-label="2026 small model matrix">
-          <thead><tr><th>Model</th><th>Weights</th><th>T 2k · 16</th><th>O 2k · 16</th><th>T TTFT</th><th>O TTFT</th><th>128 · 16</th></tr></thead>
+          <thead><tr><th>Model</th><th>Weights</th><th>T 2k · 16</th><th>O 2k · 16</th><th>T TTFT</th><th>O TTFT</th><th>tokens T/O</th></tr></thead>
           <tbody>
-            <tr><td>Qwen3.5 0.8B · 4bit</td><td>0.65 GB</td><td>9.6 tok/s</td><td class="best">50.0</td><td>12.5 s</td><td>19.3 s</td><td class="best">262 tok/s</td></tr>
-            <tr><td>Qwen3.5 2B · 4bit</td><td>1.75 GB</td><td>16.7 tok/s</td><td class="best">24.2</td><td>28.8 s</td><td>39.8 s</td><td>94 tok/s</td></tr>
-            <tr><td>Qwen3.5 4B · 4bit</td><td>3.06 GB</td><td>6.7 tok/s</td><td class="best">9.4</td><td>73.6 s</td><td>88.2 s</td><td>53 tok/s</td></tr>
-            <tr><td><b>Gemma 4 E2B · 4bit</b></td><td>3.58 GB</td><td>18.5 tok/s</td><td class="best">20.5</td><td>14.3 s</td><td>7.1 s</td><td>147 tok/s</td></tr>
+            <tr><td>Qwen3.5 0.8B · 4bit</td><td>0.65 GB</td><td>35.8 tok/s</td><td>50.0</td><td>13.2 s</td><td>19.3 s</td><td>2048 / 2044</td></tr>
+            <tr><td>Qwen3.5 2B · 4bit</td><td>1.75 GB</td><td>16.6 tok/s</td><td>24.2</td><td>29.0 s</td><td>39.8 s</td><td>2048 / 2048</td></tr>
+            <tr><td>Qwen3.5 4B · 4bit</td><td>3.06 GB</td><td>3.4 tok/s</td><td>9.4</td><td>121.9 s</td><td>88.2 s</td><td>1960 / 1752</td></tr>
+            <tr><td><b>Gemma 4 E2B · 4bit</b></td><td>3.58 GB</td><td>4.3 tok/s</td><td>20.5</td><td>68.3 s</td><td>7.1 s</td><td>1130 / 1994</td></tr>
           </tbody>
         </table>
       </div>
       <p class="callout" style="margin-top:14px">
-        <b>T=Terrazzo, O=Ollama 0.34.4</b> (16 parallel, 8k context). Terrazzo's
-        single-stream <em>decode-only</em> number is faster in this configuration, but that
-        excludes queueing, prefill and first-token wait. At 16 sessions Ollama has higher
-        aggregate throughput on these models. Terrazzo cannot use its prefix cache with
-        Qwen3.5/Gemma 4 caches yet; how much of the gap that explains is <b>not isolated</b>.
-        The runs also generated different token counts, so aggregate tok/s is not
-        like-for-like. No quality evaluation, so no "best model" claim. Full tables:
+        <b>T=Terrazzo, O=Ollama 0.34.4</b> (16 parallel, 8k context). A harness bug used
+        different user prompts: Terrazzo's earlier 498-token run was <b>not</b> early stop.
+        After alignment, Qwen3.5 0.8B/2B generate comparable token counts, so their aggregate
+        comparison is valid; Gemma 4 still differs (1130 vs 1994) and is not task-equivalent.
+        Terrazzo's <em>decode-only</em> number is faster — not end-to-end. At 16 sessions
+        Ollama has higher aggregate throughput; how much the prefix-cache limitation explains
+        is <b>not isolated</b>. No quality evaluation, no "best model" claim. Full data:
         <a href="https://github.com/louisyeaaah/terrazzo/blob/main/BENCHMARKS.md">BENCHMARKS §54–55</a>.
       </p>
     </div>

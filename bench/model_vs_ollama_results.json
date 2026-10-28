@@ -1,6 +1,6 @@
 {
  "timestamp": "2026-10-28T22:50:34+1100",
- "note": "Terrazzo raw no-prefix-cache (MLX 4bit) vs Ollama 0.34.4; Ollama quant per model below; p95 completion/token counts added; aggregate tok/s is not like-for-like",
+ "note": "Terrazzo raw no-prefix-cache (MLX 4bit) vs Ollama 0.34.4; Ollama quant per model below; p95 completion/token counts added; aggregate tok/s is not like-for-like; Terrazzo 16-session values replaced by aligned-prompt run (loadavg ~4.9-6.3)",
  "ollama": {
   "version": "0.34.4",
   "num_parallel": 16,
@@ -41,54 +41,22 @@
  "agent": [
   {
    "model": "Qwen3.5 0.8B",
-   "sessions": 4,
-   "terrazzo_tok_s": 13.9,
-   "ollama_tok_s": 48.3,
-   "terrazzo_ttft_p50": 5.06,
-   "ollama_ttft_p50": 4.17
-  },
-  {
-   "model": "Qwen3.5 2B",
-   "sessions": 4,
-   "terrazzo_tok_s": 18.8,
-   "ollama_tok_s": 23.0,
-   "terrazzo_ttft_p50": 11.93,
-   "ollama_ttft_p50": 9.03
-  },
-  {
-   "model": "Qwen3.5 4B",
-   "sessions": 4,
-   "terrazzo_tok_s": 7.0,
-   "ollama_tok_s": 8.7,
-   "terrazzo_ttft_p50": 31.93,
-   "ollama_ttft_p50": 19.34
-  },
-  {
-   "model": "Gemma 4 E2B",
-   "sessions": 4,
-   "terrazzo_tok_s": 21.5,
-   "ollama_tok_s": 18.8,
-   "terrazzo_ttft_p50": 5.69,
-   "ollama_ttft_p50": 6.57
-  },
-  {
-   "model": "Qwen3.5 0.8B",
    "sessions": 16,
-   "terrazzo_tok_s": 9.6,
+   "terrazzo_tok_s": 35.8,
    "ollama_tok_s": 50.0,
-   "terrazzo_ttft_p50": 12.5,
+   "terrazzo_ttft_p50": 13.19,
    "ollama_ttft_p50": 19.29,
-   "terrazzo_p95_completion": 42.8,
+   "terrazzo_p95_completion": 41.2,
    "ollama_p95_completion": 20.9,
-   "terrazzo_tokens": 498,
+   "terrazzo_tokens": 2048,
    "ollama_tokens": 2044
   },
   {
    "model": "Qwen3.5 2B",
    "sessions": 16,
-   "terrazzo_tok_s": 16.7,
+   "terrazzo_tok_s": 16.6,
    "ollama_tok_s": 24.2,
-   "terrazzo_ttft_p50": 28.75,
+   "terrazzo_ttft_p50": 29.0,
    "ollama_ttft_p50": 39.83,
    "terrazzo_p95_completion": 89.6,
    "ollama_p95_completion": 41.6,
@@ -98,25 +66,25 @@
   {
    "model": "Qwen3.5 4B",
    "sessions": 16,
-   "terrazzo_tok_s": 6.7,
+   "terrazzo_tok_s": 3.4,
    "ollama_tok_s": 9.4,
-   "terrazzo_ttft_p50": 73.59,
+   "terrazzo_ttft_p50": 121.9,
    "ollama_ttft_p50": 88.22,
-   "terrazzo_p95_completion": 224.7,
+   "terrazzo_p95_completion": 400.1,
    "ollama_p95_completion": 94.0,
-   "terrazzo_tokens": 2048,
+   "terrazzo_tokens": 1960,
    "ollama_tokens": 1752
   },
   {
    "model": "Gemma 4 E2B",
    "sessions": 16,
-   "terrazzo_tok_s": 18.5,
+   "terrazzo_tok_s": 4.3,
    "ollama_tok_s": 20.5,
-   "terrazzo_ttft_p50": 14.35,
+   "terrazzo_ttft_p50": 68.3,
    "ollama_ttft_p50": 7.14,
-   "terrazzo_p95_completion": 52.1,
+   "terrazzo_p95_completion": 184.3,
    "ollama_p95_completion": 90.3,
-   "terrazzo_tokens": 1216,
+   "terrazzo_tokens": 1130,
    "ollama_tokens": 1994
   }
  ],

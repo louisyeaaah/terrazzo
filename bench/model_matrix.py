@@ -86,7 +86,9 @@ def main() -> int:
                 for sessions in session_counts:
                     systems_n, _ = A.build_systems("shared", sessions, args.system_tokens)
                     print(f"  sessions={sessions}", flush=True)
-                    summary = A.run_workload(srv, systems_n, args.turns, args.max_tokens)
+                    summary = A.run_workload(
+                        srv, systems_n, args.turns, args.max_tokens,
+                        user_template="请总结规范要点 {session}（第 {turn} 轮）")
                     prompt_tokens = [r.get("prompt_tokens") or 0 for r in summary["rows"]]
                     record["workloads"][str(sessions)] = {
                         "sessions": sessions,

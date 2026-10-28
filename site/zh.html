@@ -251,21 +251,22 @@
       </p>
       <div class="table-wrap">
         <table aria-label="2026 小模型矩阵">
-          <thead><tr><th>模型</th><th>权重</th><th>T 2k · 16</th><th>O 2k · 16</th><th>T TTFT</th><th>O TTFT</th><th>128 · 16</th></tr></thead>
+          <thead><tr><th>模型</th><th>权重</th><th>T 2k · 16</th><th>O 2k · 16</th><th>T TTFT</th><th>O TTFT</th><th>tokens T/O</th></tr></thead>
           <tbody>
-            <tr><td>Qwen3.5 0.8B · 4bit</td><td>0.65 GB</td><td>9.6 tok/s</td><td class="best">50.0</td><td>12.5 s</td><td>19.3 s</td><td class="best">262 tok/s</td></tr>
-            <tr><td>Qwen3.5 2B · 4bit</td><td>1.75 GB</td><td>16.7 tok/s</td><td class="best">24.2</td><td>28.8 s</td><td>39.8 s</td><td>94 tok/s</td></tr>
-            <tr><td>Qwen3.5 4B · 4bit</td><td>3.06 GB</td><td>6.7 tok/s</td><td class="best">9.4</td><td>73.6 s</td><td>88.2 s</td><td>53 tok/s</td></tr>
-            <tr><td><b>Gemma 4 E2B · 4bit</b></td><td>3.58 GB</td><td>18.5 tok/s</td><td class="best">20.5</td><td>14.3 s</td><td>7.1 s</td><td>147 tok/s</td></tr>
+            <tr><td>Qwen3.5 0.8B · 4bit</td><td>0.65 GB</td><td>35.8 tok/s</td><td>50.0</td><td>13.2 s</td><td>19.3 s</td><td>2048 / 2044</td></tr>
+            <tr><td>Qwen3.5 2B · 4bit</td><td>1.75 GB</td><td>16.6 tok/s</td><td>24.2</td><td>29.0 s</td><td>39.8 s</td><td>2048 / 2048</td></tr>
+            <tr><td>Qwen3.5 4B · 4bit</td><td>3.06 GB</td><td>3.4 tok/s</td><td>9.4</td><td>121.9 s</td><td>88.2 s</td><td>1960 / 1752</td></tr>
+            <tr><td><b>Gemma 4 E2B · 4bit</b></td><td>3.58 GB</td><td>4.3 tok/s</td><td>20.5</td><td>68.3 s</td><td>7.1 s</td><td>1130 / 1994</td></tr>
           </tbody>
         </table>
       </div>
       <p class="callout" style="margin-top:14px">
-        <b>T=Terrazzo，O=Ollama 0.34.4</b>（16 并行、8k context）。Terrazzo 的单流
-        <em>decode-only</em> 数在本配置更快，但不含排队、prefill 和首 token 等待。16 会话时
-        Ollama 在这批模型上总吞吐更高。Terrazzo 目前无法为 Qwen3.5/Gemma 4 的 cache 做
-        前缀快照；这对差距的贡献比例<b>尚未隔离</b>。两组实际生成 token 数也不同，所以
-        aggregate tok/s 不能直接横比。没有质量评测，不给“综合最好模型”结论。完整表格：
+        <b>T=Terrazzo，O=Ollama 0.34.4</b>（16 并行、8k context）。测试 harness 曾用不同
+        用户 prompt；Terrazzo 之前的 498-token <b>不是</b> early stop。对齐后 Qwen3.5
+        0.8B/2B 生成量可比，aggregate 结论有效；Gemma 4 仍不一致（1130 vs 1994），不能做
+        同任务对比。Terrazzo 的 <em>decode-only</em> 更快，但不是端到端。16 会话时 Ollama
+        总吞吐更高；前缀缓存兼容性对差距的贡献<b>尚未隔离</b>。没有质量评测，不给
+        “综合最好模型”结论。完整数据：
         <a href="https://github.com/louisyeaaah/terrazzo/blob/main/BENCHMARKS.md">BENCHMARKS §54–55</a>。
       </p>
     </div>
