@@ -76,47 +76,47 @@ vLLM's single-stream number is the second (steady-state) run: the first run afte
 startup is 15.1 tok/s / 2.95 s because of kernel warm-up. Its 4/16-session rows are
 steady state as well.
 
-### Model matrix: 2026 small models (16 sessions, prompt-aligned)
+### Model matrix: 2026 small models (16 sessions, quiet retest)
 
-Same Terrazzo process, same 2k shared system prompt, no prefix cache. **This run uses the
-same Chinese user prompts as the Ollama comparison**; the earlier 1/4/16 table used an
-English prompt and is retired — that mismatch was the cause of the 498-token anomaly.
-One run, loadavg ~4.9–6.3; no quality evaluation.
+Same Terrazzo process, same 2k shared system prompt, no prefix cache, and the same Chinese
+user prompts as the Ollama comparison. This is a quiet-machine retest (Terrazzo run started
+at loadavg 1.9). No quality evaluation.
 
-| model | weights | 16-session tok/s | TTFT p50 | request completion p95 | generated tokens |
-|---|---:|---:|---:|---:|---:|
-| Qwen3.5 0.8B · 4bit | 0.65 GB | **35.8** | 13.2 s | 41.2 s | 2048 |
-| Qwen3.5 2B · 4bit | 1.75 GB | 16.6 | 29.0 s | 89.6 s | 2048 |
-| Qwen3.5 4B · 4bit | 3.06 GB | 3.4 | 121.9 s | 400.1 s | 1960 |
-| Gemma 4 E2B · 4bit | 3.58 GB | 4.3 | 68.3 s | 184.3 s | 1130 |
+| model | weights | 16-session tok/s | TTFT p50 | request completion p95 | generated tokens | peak MLX |
+|---|---:|---:|---:|---:|---:|---:|
+| Qwen3.5 0.8B · 4bit | 0.65 GB | **66.5** | 6.8 s | 22.3 s | 2048 | 4.6 GB |
+| Qwen3.5 2B · 4bit | 1.75 GB | 30.7 | 15.4 s | 48.5 s | 2048 | 5.3 GB |
+| Qwen3.5 4B · 4bit | 3.06 GB | 10.9 | 40.8 s | 124.2 s | 1902 | 9.6 GB |
+| Gemma 4 E2B · 4bit | 3.58 GB | 27.4 | 10.6 s | 28.5 s | 1136 | 5.3 GB |
 
-`request completion p95` is the per-request completion latency, not the wall time of the
-whole batch. Gemma 4's 1130 tokens vs Ollama's 1994 is still unresolved; it returns a
-clarification request and finishes with `stop`. Historical models are intentionally excluded.
+`request completion p95` is per-request completion latency, not batch wall time. Gemma 4's
+1136 tokens vs Ollama's 1994 remains unresolved (it returns a clarification request). The
+earlier 498-token anomaly was caused by a **prompt mismatch** in the harness, not early
+stop. Historical models are intentionally excluded.
 
 ### vs Ollama (same 2026 models, same prompts)
 
 **Decode-only** (short prompt, 128 tokens): Terrazzo's MLX path is 1.8–2.35× faster in this
-configuration. This is not end-to-end. Qwen3.5 0.8B is also MLX 4bit vs Ollama Q8_0, so its
-2.29× cannot be attributed to the engine alone.
+configuration. This is not end-to-end; Qwen3.5 0.8B is MLX 4bit vs Ollama Q8_0, so 2.29×
+cannot be attributed to the engine alone.
 
-After aligning prompts, Qwen3.5 0.8B/2B generate the same amount of work on both sides
-(2048 vs 2044/2048 tokens), so those aggregate comparisons are meaningful. Qwen3.5 4B is
-close (1960 vs 1752). Gemma 4 E2B is **not comparable yet** (1130 vs 1994; it asks for more
-content and stops), so its row is not a task-equivalent throughput comparison.
+After prompt alignment, Qwen3.5 0.8B/2B generate the same amount of work (2048 vs
+2044/2048), so aggregate comparisons are meaningful. Qwen3.5 4B is close (1902 vs 1752).
+Gemma 4 E2B is **not task-equivalent** (1136 vs 1994) and is not used for a throughput
+winner claim.
 
 | model | decode T / O | 16s tok/s T / O | TTFT p50 T / O | completion p95 T / O | tokens T / O |
 |---|---:|---:|---:|---:|---:|
-| Qwen3.5 0.8B | 133.2 / 58.1 | 35.8 / **50.0** | **13.2** / 19.3 s | 41.2 / **20.9** s | 2048 / 2044 |
-| Qwen3.5 2B | 102.1 / 57.0 | 16.6 / **24.2** | **29.0** / 39.8 s | 89.6 / **41.6** s | 2048 / 2048 |
-| Qwen3.5 4B | 46.7 / 25.8 | 3.4 / **9.4** | 121.9 / **88.2** s | 400.1 / **94.0** s | 1960 / 1752 |
-| Gemma 4 E2B | 77.2 / 32.8 | 4.3 / **20.5** | 68.3 / **7.1** s | 184.3 / **90.3** s | 1130 / 1994 |
+| Qwen3.5 0.8B | 133.2 / 58.1 | 66.5 / **83.2** | **6.8** / 11.4 s | 22.3 / **12.0** s | 2048 / 2044 |
+| Qwen3.5 2B | 102.1 / 57.0 | 30.7 / **43.8** | **15.4** / 21.6 s | 48.5 / **23.6** s | 2048 / 2048 |
+| Qwen3.5 4B | 46.7 / 25.8 | 10.9 / **17.0** | **40.8** / 49.3 s | 124.2 / **51.2** s | 1902 / 1752 |
+| Gemma 4 E2B | 77.2 / 32.8 | 27.4 / **34.1** | 10.6 / **4.3** s | 28.5 / **53.3** s | 1136 / 1994 |
 
-For Qwen3.5 0.8B/2B, Terrazzo starts earlier but has a **higher per-request completion
-p95**; Ollama completes the batch with higher aggregate throughput. For Qwen3.5 4B the
-picture is not close. Gemma 4's token mismatch means no task-equivalent claim is possible.
-Known limitation: Terrazzo cannot snapshot Qwen3.5 ArraysCache / Gemma 4 sliding caches;
-how much of the gap is cache vs scheduling/quantization/compute is not isolated. Raw data:
+Qwen3.5 0.8B/2B: Terrazzo starts earlier but has **higher per-request completion p95**;
+Ollama has higher aggregate throughput. Qwen3.5 4B is slower on Terrazzo. Gemma 4's token
+mismatch prevents a task-equivalent claim. Known limitation: Terrazzo cannot snapshot
+Qwen3.5 ArraysCache / Gemma 4 sliding caches; cache vs scheduling/quantization/compute
+contributions are **not isolated**. Raw data:
 [bench/model_vs_ollama_results.json](bench/model_vs_ollama_results.json).
 
 ### Long system prompts: pre-registration is the differentiator
