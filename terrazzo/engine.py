@@ -186,6 +186,7 @@ class Engine:
         self.request_stages = {"added": 0, "first_token": 0,
                                "finished": 0, "aborted": 0, "failed": 0}
         self.concurrency_changes: list[dict] = []
+        self._executor_broken = False
         self.prefix_hit_tokens = 0
         self.prefix_recompute_skips = 0
         self.prefix_reuse_autos = 0
@@ -217,6 +218,8 @@ class Engine:
         request_id: str | None = None,
     ) -> Sequence:
         with self._lock:
+            if getattr(self, "_executor_broken", False):
+                raise RuntimeError("executor is broken after a failed reset; restart the server")
             if prompt_token_ids is not None:
                 ids = list(prompt_token_ids)
             else:
@@ -281,18 +284,26 @@ class Engine:
     def abort(self, request_id: str) -> bool:
         with self._lock:
             uid = self._inserted.pop(request_id, None)
+            seq = None
+            for candidate in list(self.scheduler.waiting) + list(self.scheduler.running):
+                if candidate.request_id == request_id:
+                    seq = candidate
+                    break
+            if seq is None and uid is not None:
+                seq = self.runner.uid_to_seq.get(uid)
             ok = self.scheduler.abort(request_id)
             if ok:
                 self.request_stages["aborted"] += 1
-            # Remove a running request from the executor too.  scheduler.abort()
-            # frees the paged blocks; leaving the uid in BatchGenerator would keep
-            # generating and could later touch freed/reused KV state.
-            if uid is not None:
+            # Remove from the real executor too. MLXRunner.remove() takes Sequence
+            # objects (it resolves uids itself) and frees the BatchGenerator entry;
+            # scheduler.abort() only handles the logical blocks.
+            if seq is not None:
                 try:
-                    self.runner.remove([uid])
+                    self.runner.remove([seq])
                 except Exception:
                     pass
-                self.runner.uid_to_seq.pop(uid, None)
+            if uid is not None:
+                self._inserted.pop(request_id, None)
         if ok:
             # terminate a handler waiting on this stream as well, then release it
             with self._stream_lock:
@@ -332,21 +343,44 @@ class Engine:
         return len(ids)
 
     def handle_failure(self, exc: BaseException) -> int:
-        """Fatal step error: terminate every in-flight request so no HTTP handler hangs.
+        """Fatal step error: drop scheduler + executor state before serving again.
 
-        The engine cannot keep the current sequences (KV/scheduler state may be
-        inconsistent); every waiting stream gets a final event carrying the error and
-        the scheduler is told to drop the request. New requests can still be submitted.
+        Scheduler aborts free logical blocks; the BatchGenerator is then rebuilt so
+        stale sequences/uid mappings cannot receive new work. If the rebuild itself
+        fails, the engine refuses new requests until the process is restarted.
         """
         with self._lock:
             stream_lock = getattr(self, "_stream_lock", self._lock)
             with stream_lock:
                 ids = list(self._streams)
+            # cover requests that are in the scheduler but not (or no longer) in
+            # the HTTP stream map as well
+            waiting = getattr(self.scheduler, "waiting", ()) or ()
+            running = getattr(self.scheduler, "running", ()) or ()
+            for seq in list(waiting) + list(running):
+                try:
+                    self.scheduler.abort(seq.request_id)
+                except Exception:
+                    pass
             for rid in ids:
                 try:
                     self.scheduler.abort(rid)
                 except Exception:
                     pass
+            runner = getattr(self, "runner", None)
+            self._executor_broken = False
+            try:
+                if runner is not None and hasattr(runner, "reset"):
+                    runner.reset()
+                elif runner is not None:
+                    runner.remove(list(runner.uid_to_seq.values()))
+            except Exception:
+                self._executor_broken = True
+            self._inserted.clear()
+            if runner is not None:
+                uid_map = getattr(runner, "uid_to_seq", None)
+                if uid_map is not None:
+                    uid_map.clear()
         return self.fail_streams(exc)
 
     # -------------------------------------------------------------------- step

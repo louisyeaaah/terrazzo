@@ -256,7 +256,7 @@ BENCHMARKS.md      every measurement, including the ones that lost
 ## Tests and benchmarks
 
 ```bash
-python -m unittest discover -s tests                  # core suite (249 tests, 1 skipped)
+python -m unittest discover -s tests                  # core suite (252 tests, 1 skipped)
 python -m unittest discover -s experiments/tests -v   # experimental kernels (31 tests)
 python scripts/ci_core_tests.py                       # pure-Python subset with MLX blocked
 bash bench/head_to_head.sh                            # Ollama head-to-head

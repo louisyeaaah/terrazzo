@@ -110,14 +110,21 @@ class LifecycleTest(unittest.TestCase):
         import queue as _queue
         e = self._engine()
         uid = 7
+        seq = Sequence(request_id="r-abort", prompt_token_ids=[1, 2],
+                       sampling_params=SamplingParams(max_tokens=4))
         e._inserted = {"r-abort": uid}
         removed = []
         class FakeRunner:
-            uid_to_seq = {uid: object()}
-            def remove(self, uids):
-                removed.extend(uids)
+            uid_to_seq = {uid: seq}
+            def remove(self, seqs):
+                removed.extend(seqs)
+                for u, s in list(self.uid_to_seq.items()):
+                    if s in seqs:
+                        self.uid_to_seq.pop(u, None)
         e.runner = FakeRunner()
         class FakeScheduler:
+            waiting = []
+            running = [seq]
             def abort(self, rid):
                 return True
         e.scheduler = FakeScheduler()
@@ -125,11 +132,60 @@ class LifecycleTest(unittest.TestCase):
         e._streams["r-abort"] = q
         e._outputs["r-abort"] = object()
         self.assertTrue(e.abort("r-abort"))
-        self.assertEqual(removed, [uid])
+        self.assertEqual(removed, [seq])
         self.assertNotIn(uid, e.runner.uid_to_seq)
         self.assertEqual(e._streams, {})
         self.assertEqual(e._outputs, {})
         self.assertEqual(q.get(timeout=1)["finish_reason"], "abort")
+
+    def test_runner_remove_resolves_sequence_to_uid(self):
+        from terrazzo.runner import MLXRunner
+        seq = Sequence(request_id="x", prompt_token_ids=[1, 2],
+                       sampling_params=SamplingParams(max_tokens=4))
+        runner = MLXRunner.__new__(MLXRunner)
+        runner.uid_to_seq = {7: seq}
+        class FakeBG:
+            calls = []
+            def remove(self, uids, return_prompt_caches=False):
+                self.calls.append(list(uids))
+                return {}
+        runner.bg = FakeBG()
+        runner.remove([seq])
+        self.assertEqual(runner.bg.calls, [[7]])
+        self.assertEqual(runner.uid_to_seq, {})
+
+    def test_handle_failure_resets_executor_state(self):
+        import queue as _queue
+        e = self._engine()
+        e._executor_broken = False
+        seq = Sequence(request_id="r1", prompt_token_ids=[1, 2],
+                       sampling_params=SamplingParams(max_tokens=4))
+        e._inserted = {"r1": 7}
+        reset = {"called": False}
+        class FakeRunner:
+            uid_to_seq = {7: seq}
+            def reset(self):
+                reset["called"] = True
+                self.uid_to_seq.clear()
+        e.runner = FakeRunner()
+        aborted = []
+        class FakeScheduler:
+            waiting = [seq]
+            running = []
+            def abort(self, rid):
+                aborted.append(rid)
+                return True
+        e.scheduler = FakeScheduler()
+        q = _queue.Queue()
+        e._streams["r1"] = q
+        e._outputs["r1"] = object()
+        n = e.handle_failure(RuntimeError("metal boom"))
+        self.assertEqual(n, 1)
+        self.assertTrue(reset["called"])
+        self.assertIn("r1", aborted)
+        self.assertEqual(e._inserted, {})
+        self.assertEqual(e.runner.uid_to_seq, {})
+        self.assertEqual(q.get(timeout=1)["finish_reason"], "error")
 
     def test_worker_continues_after_watchdog_released_outputs(self):
         from types import SimpleNamespace

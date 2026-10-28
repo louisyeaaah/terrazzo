@@ -1068,3 +1068,31 @@ class WatchdogTest(unittest.TestCase):
             rt._unhealthy = True
             with self.assertRaises(MemoryError):
                 rt.submit([1], SamplingParams(), "rid")
+
+
+class RuntimeStatsModeTest(unittest.TestCase):
+    def test_paged_and_pool_stats_have_auto_cap_defaults(self):
+        import queue as _queue
+        from terrazzo.server import PagedRuntime, PoolRuntime
+
+        class FakeSession:
+            def stats(self):
+                return {}
+
+        class FakePrefix:
+            num_tokens = 0
+
+        for cls in (PagedRuntime, PoolRuntime):
+            rt = cls.__new__(cls)
+            rt.session = FakeSession() if cls is PagedRuntime else None
+            rt._queue = _queue.Queue()
+            rt.num_requests = 0
+            rt.num_tokens = 0
+            rt.auto_prefix = True
+            rt._auto_prefix_stats = {}
+            rt.prefix = FakePrefix()
+            rt.use_metal = False
+            rt._worker_stats = lambda: {}
+            rt._memory_stats = lambda: {}
+            st = rt.stats()
+            self.assertEqual(st["auto_concurrency"], {"enabled": False})

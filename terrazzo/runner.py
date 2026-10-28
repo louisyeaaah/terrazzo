@@ -53,7 +53,9 @@ class MLXRunner:
         _require_mlx()
         self.model_path = model_path
         self.completion_batch_size = completion_batch_size
+        self.prefill_batch_size = prefill_batch_size
         self.prefill_step_size = prefill_step_size
+        self.max_kv_size = max_kv_size
         self.model = None
         self.tokenizer = None
         if load_model:
@@ -61,20 +63,40 @@ class MLXRunner:
             self.model, self.tokenizer = mlx_load(model_path)
             self.load_time = time.perf_counter() - t0
             self.eos_token_ids = tuple(sorted(getattr(self.tokenizer, "eos_token_ids", []) or []))
-            self.bg = BatchGenerator(
-                self.model,
-                max_tokens=128,
-                stop_tokens=[(t,) for t in self.eos_token_ids],
-                completion_batch_size=completion_batch_size,
-                prefill_batch_size=prefill_batch_size,
-                prefill_step_size=prefill_step_size,
-                max_kv_size=max_kv_size,
-            )
+            self.bg = self._new_batch_generator()
         else:  # pragma: no cover - test seam
             self.load_time = 0.0
             self.eos_token_ids = ()
             self.bg = None
         self.uid_to_seq: dict[int, Sequence] = {}
+
+    def _new_batch_generator(self):
+        if self.model is None:
+            return None
+        return BatchGenerator(
+            self.model,
+            max_tokens=128,
+            stop_tokens=[(t,) for t in self.eos_token_ids],
+            completion_batch_size=self.completion_batch_size,
+            prefill_batch_size=self.prefill_batch_size,
+            prefill_step_size=self.prefill_step_size,
+            max_kv_size=self.max_kv_size,
+        )
+
+    def reset(self) -> None:
+        """Drop all executor state after an unrecoverable step failure.
+
+        The model weights stay loaded; the continuous-batching generator is recreated
+        from the same parameters. Any KV/cache held by the old generator is released.
+        """
+        old = getattr(self, "bg", None)
+        if old is not None:
+            try:
+                old.close()
+            except Exception:
+                pass
+        self.uid_to_seq.clear()
+        self.bg = self._new_batch_generator()
 
     # ------------------------------------------------------------------ tokenize
     def encode(self, text: str) -> list[int]:

@@ -69,6 +69,9 @@ def apply_mlx_memory_limit(cap_mb: float | None) -> dict:
 
 class BaseRuntime:
     name = "base"
+    # EngineRuntime overrides these; class defaults keep Paged/Pool /stats safe
+    auto_cap = None
+    _auto_inputs: dict = {}
 
     def _memory_stats(self) -> dict:
         return _mlx_memory()

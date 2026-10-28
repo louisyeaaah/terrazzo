@@ -239,7 +239,7 @@ BENCHMARKS.md      所有测量数据，包括输掉的那些
 ## 测试与基准
 
 ```bash
-python -m unittest discover -s tests                  # 核心套件（249 个测试，1 skipped）
+python -m unittest discover -s tests                  # 核心套件（252 个测试，1 skipped）
 python -m unittest discover -s experiments/tests -v   # 实验内核（31 个测试）
 python scripts/ci_core_tests.py                       # MLX 被 block 的纯 Python 子集
 bash bench/head_to_head.sh                            # 与 Ollama 的 head-to-head
