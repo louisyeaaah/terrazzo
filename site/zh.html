@@ -25,6 +25,7 @@
       <a href="#progress">进展</a>
       <a href="#concurrency">并发预设</a>
       <a href="#bench">基准</a>
+      <a href="#models">模型</a>
       <a href="#long">前缀缓存</a>
       <a href="#positioning">定位</a>
       <a href="#features">能力</a>
@@ -233,6 +234,36 @@
         vLLM 单会话取稳态第二次运行；它启动后的第一次运行包含 kernel 热身（15.1 tok/s / 2.95 s），
         已排除。Ollama 16 会话延迟主要受默认 <span class="mono">num_parallel=1</span> 影响——
         是配置限制，不是能力上限。
+      </p>
+    </div>
+  </section>
+
+  <section id="models" aria-labelledby="models-title">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="models-title">2026 小模型矩阵</h2>
+        <span class="note">原始服务速度 · 无前缀缓存 · 16 会话</span>
+      </div>
+      <p class="section-sub">
+        同一台机器、同一个服务配置；只测 2026 年的新一代小模型，不包含历史模型。
+        Qwen3.5（ArraysCache）和 Gemma 4（sliding-window cache）暂时不能被 dense-KV
+        前缀缓存快照，因此本组关闭前缀缓存。
+      </p>
+      <div class="table-wrap">
+        <table aria-label="2026 小模型矩阵">
+          <thead><tr><th>模型</th><th>权重</th><th>2k 提示 · 16 会话</th><th>2k TTFT p50</th><th>128 提示 · 16 会话</th></tr></thead>
+          <tbody>
+            <tr><td>Qwen3.5 0.8B · 4bit</td><td>0.65 GB</td><td>9.6 tok/s</td><td>12.5 s</td><td class="best">262 tok/s</td></tr>
+            <tr><td>Qwen3.5 2B · 4bit</td><td>1.75 GB</td><td>16.7 tok/s</td><td>28.8 s</td><td>94 tok/s</td></tr>
+            <tr><td>Qwen3.5 4B · 4bit</td><td>3.06 GB</td><td>6.7 tok/s</td><td>73.6 s</td><td>53 tok/s</td></tr>
+            <tr><td><b>Gemma 4 E2B · 4bit</b></td><td>3.58 GB</td><td class="best">18.5 tok/s</td><td class="best">14.3 s</td><td>147 tok/s</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="callout" style="margin-top:14px">
+        <b>这是模型原始速度，不是能力评测。</b>2k 提示下 Gemma 4 E2B 最好；短提示吞吐
+        Qwen3.5 0.8B 最好。Qwen3.5 4B 偏慢是当前 MLX 路径的真实结果，不是笔误。
+        完整表格、内存和前缀缓存限制见 <a href="https://github.com/louisyeaaah/terrazzo/blob/main/BENCHMARKS.md">BENCHMARKS §54</a>。
       </p>
     </div>
   </section>

@@ -185,8 +185,21 @@ def start_server(arm: str, model: str, port: int, system_text: str | None,
     base = f"http://127.0.0.1:{port}"
     if spec["prewarm"] and system_text:
         t0 = time.perf_counter()
-        with _post(base, "/v1/prewarm", {"system": system_text}, timeout=900) as r:
-            r.read()
+        try:
+            with _post(base, "/v1/prewarm", {"system": system_text}, timeout=900) as r:
+                r.read()
+        except BaseException:
+            # do not leave a half-started server behind on prewarm failure
+            try:
+                proc.terminate()
+                proc.wait(timeout=10)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+            log.close()
+            raise
         prewarm_s = time.perf_counter() - t0
     # warm up kernels; not measured
     try:

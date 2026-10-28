@@ -71,6 +71,23 @@ token 数全部来自服务端计数（OpenAI 风格用 `usage`，Ollama 原生�
 vLLM 单会话取第二次（稳态）运行；首次运行包含 kernel 热身（15.1 tok/s / 2.95 s）。
 4/16 会话均为稳态。
 
+### 模型矩阵：2026 年小模型（无前缀缓存）
+
+同一个 Terrazzo 进程、同一个 2k 共享系统提示、关闭前缀缓存（最新 hybrid/sliding-window
+cache 暂时无法被 dense-KV 前缀缓存快照）。这是**模型/运行时速度对比，不是能力评测**；
+历史模型刻意不参测。2026 年的 Qwen3.5 与 Gemma 4 结果如下：
+
+| 模型 | 权重 | 1 会话 | 4 会话 | 16 会话 | 16 会话 TTFT p50 |
+|---|---:|---:|---:|---:|---:|
+| Qwen3.5 0.8B · 4bit | 0.65 GB | 11.0 tok/s | 13.9 | 9.6 | 12.5 s |
+| Qwen3.5 2B · 4bit | 1.75 GB | 16.0 | 18.8 | 16.7 | 28.8 s |
+| Qwen3.5 4B · 4bit | 3.06 GB | 6.5 | 7.0 | 6.7 | 73.6 s |
+| **Gemma 4 E2B · 4bit** | 3.58 GB | 16.6 | 21.5 | **18.5** | **14.3 s** |
+
+短提示 decode（128 token 系统提示、16 会话）更能看纯速度：Qwen3.5 0.8B **262 tok/s**、
+Gemma 4 E2B 147、Qwen3.5 2B 94、Qwen3.5 4B 53。4B 偏慢是当前 MLX 路径的真实结果，
+不是笔误。完整表格、峰值内存和命令见 [BENCHMARKS §54](BENCHMARKS.md)。
+
 ### 长系统提示：预注册是差异点
 
 | 提示长度 | terrazzo 默认 cold TTFT | terrazzo 预注册 cold TTFT | Ollama cold TTFT | terrazzo warm-same | Ollama warm-same |

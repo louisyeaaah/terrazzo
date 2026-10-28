@@ -25,6 +25,7 @@
       <a href="#progress">Progress</a>
       <a href="#concurrency">Concurrency</a>
       <a href="#bench">Benchmarks</a>
+      <a href="#models">Models</a>
       <a href="#long">Prefix cache</a>
       <a href="#positioning">Positioning</a>
       <a href="#features">Features</a>
@@ -238,6 +239,37 @@
         vLLM's single-session figure is the steady-state run; its first run after startup includes
         kernel warm-up (15.1 tok/s / 2.95 s) and is excluded. Ollama's 16-session latency is dominated
         by its default <span class="mono">num_parallel=1</span> — a configuration limit, not a capability ceiling.
+      </p>
+    </div>
+  </section>
+
+  <section id="models" aria-labelledby="models-title">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="models-title">2026 small models</h2>
+        <span class="note">raw serving · no prefix cache · 16 sessions</span>
+      </div>
+      <p class="section-sub">
+        Same machine and server; current 2026 small releases, not historical models.
+        These runs disable the prefix cache because Qwen3.5 (ArraysCache) and Gemma 4
+        (sliding-window cache) cannot be snapshotted by the dense-KV prefix cache yet.
+      </p>
+      <div class="table-wrap">
+        <table aria-label="2026 small model matrix">
+          <thead><tr><th>Model</th><th>Weights</th><th>2k prompt · 16 sess</th><th>2k TTFT p50</th><th>128 prompt · 16 sess</th></tr></thead>
+          <tbody>
+            <tr><td>Qwen3.5 0.8B · 4bit</td><td>0.65 GB</td><td>9.6 tok/s</td><td>12.5 s</td><td class="best">262 tok/s</td></tr>
+            <tr><td>Qwen3.5 2B · 4bit</td><td>1.75 GB</td><td>16.7 tok/s</td><td>28.8 s</td><td>94 tok/s</td></tr>
+            <tr><td>Qwen3.5 4B · 4bit</td><td>3.06 GB</td><td>6.7 tok/s</td><td>73.6 s</td><td>53 tok/s</td></tr>
+            <tr><td><b>Gemma 4 E2B · 4bit</b></td><td>3.58 GB</td><td class="best">18.5 tok/s</td><td class="best">14.3 s</td><td>147 tok/s</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="callout" style="margin-top:14px">
+        <b>Read this as raw model speed, not model quality.</b> Gemma 4 E2B wins this
+        2k-prompt matrix; Qwen3.5 0.8B wins short-prompt throughput. The Qwen3.5 4B
+        result is a real MLX-path number, not a typo. Full tables, memory and the
+        prefix-cache limitation: <a href="https://github.com/louisyeaaah/terrazzo/blob/main/BENCHMARKS.md">BENCHMARKS §54</a>.
       </p>
     </div>
   </section>

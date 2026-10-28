@@ -2188,3 +2188,51 @@ completion_batch_size=16、ADMIT_BATCH=16、ADMIT_WAIT=4；不再用“4 槽 + 4
 | step 失败后执行器残留 | `handle_failure` 中止 scheduler 全部请求并 `runner.reset()` 重建 BatchGenerator、清空 `_inserted`/`uid_to_seq`；reset 失败则 `_executor_broken` 拒绝新请求 |
 | abort 底层删除失败仍返回成功 | `MLXRunner.remove` 只在 `bg.remove` 成功后清 uid 映射；`Engine.abort` 删除失败进入 `handle_failure`/reset 并返回 False，reset 失败置 `_executor_broken`；补三条故障路径测试 |
 | paged/pool stats 修复实际漏提交 | `BaseRuntime.auto_cap/_auto_inputs` 默认值已提交；新增两个模式 stats 测试 |
+
+## 54. 2026 小模型矩阵（raw，无前缀缓存，2026-10-28）
+
+同一台 M1 Max 64GB、同一 Terrazzo 进程配置（`--profile agent --prefix-reuse always`），
+但**关闭前缀缓存**：Qwen3.5 使用 ArraysCache（线性注意力/混合层），Gemma 4 使用
+sliding-window cache，当前 dense-KV 前缀缓存无法快照/重建它们。所有数字是 server-reported
+completion tokens；2k 共享系统提示、2 turns × 64 token、1/4/16 会话。loadavg ~4.5。
+
+### 54.1 2k 共享提示（无缓存）
+
+| 模型 | 权重 | 1 会话 | 4 会话 | 16 会话 | 16 会话 TTFT p50 | 16 会话 p95 | 16 会话峰值 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Qwen3.5 0.8B · 4bit | 0.65 GB | 11.0 tok/s | 13.9 | 9.6 | 12.5 s | 25.8 s | 4.6 GB |
+| Qwen3.5 2B · 4bit | 1.75 GB | 16.0 | 18.8 | 16.7 | 28.8 s | 56.8 s | 5.3 GB |
+| Qwen3.5 4B · 4bit | 3.06 GB | 6.5 | 7.0 | 6.7 | 73.6 s | 144.3 s | 9.6 GB |
+| **Gemma 4 E2B · 4bit** | 3.58 GB | 16.6 | 21.5 | **18.5** | **14.3 s** | 29.6 s | 5.3 GB |
+
+Qwen3.5 4B 在当前 MLX 路径上明显慢于 2B（真实结果，不是笔误）；这属于运行时/架构效率，
+不是模型能力结论。
+
+### 54.2 短提示 decode（128 token 系统提示，16 会话）
+
+| 模型 | 1 会话 | 4 会话 | 16 会话 | 16 会话 TTFT p50 |
+|---|---:|---:|---:|---:|
+| **Qwen3.5 0.8B** | 81.1 tok/s | 180.9 | **262.3** | 1.55 s |
+| Qwen3.5 2B | 55.1 | 69.0 | 94.3 | 3.35 s |
+| Qwen3.5 4B | 27.1 | 34.7 | 53.2 | 8.40 s |
+| Gemma 4 E2B | 52.1 | 84.6 | 147.0 | 1.30 s |
+
+短提示下 Qwen3.5 0.8B 最快；Gemma 4 E2B 在 2k 提示下吞吐/TTFT 最好。历史模型（Qwen3-4B
+等）刻意不参测；本表只覆盖 2026 年的小模型。
+
+### 54.3 前缀缓存兼容性（重要限制）
+
+- Qwen3.5: `make_prompt_cache` 产生 ArraysCache（无 `keys/values`），prewarm 返回
+  `registered:false`（新增的失败兜底，不再让请求线程崩溃）。
+- Gemma 4 E2B: prewarm 后首次 merge 触发 cache shape 不匹配；同样不支持当前 dense-KV
+  prefix cache。
+- 因此本矩阵是**原始模型服务速度**，不代表 Terrazzo 的共享前缀加速；不能用它对比
+  “前缀缓存收益”。后续若要支持这些模型，需要为 hybrid/sliding cache 增加通用快照/重建。
+
+命令：
+
+```bash
+python bench/model_matrix.py --models qwen3.5-0.8b,qwen3.5-2b,qwen3.5-4b,gemma4-e2b \
+  --cache-mode off --sessions 1,4,16 --system-tokens 2000
+python bench/model_matrix.py ... --system-tokens 128 --out bench/model_matrix_short_results.json
+```

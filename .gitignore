@@ -10,3 +10,6 @@ out/
 models/
 .hf-home/
 bench/co_design_results.json
+
+# local model snapshots for the model matrix
+.hf-models/

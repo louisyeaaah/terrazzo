@@ -635,14 +635,38 @@ class EngineRuntime(BaseRuntime):
             raise ValueError("system prompt is empty")
 
         def job():
-            ids = self.apply_chat_template([{"role": "system", "content": system_text}])
+            # Some modern chat templates (Qwen3.5, Gemma 4) reject a system-only
+            # conversation with "No user query found". Fall back to a minimal user
+            # turn; the registered prefix still covers the shared system tokens and
+            # only diverges at the dummy user content.
+            template = "system"
+            try:
+                ids = self.apply_chat_template([{"role": "system", "content": system_text}])
+            except Exception:
+                template = "system+user"
+                ids = self.apply_chat_template([
+                    {"role": "system", "content": system_text},
+                    {"role": "user", "content": "warm up"},
+                ])
             t0 = time.perf_counter()
-            prefix = self.engine.register_prefix(ids)
+            try:
+                prefix = self.engine.register_prefix(ids)
+            except Exception as exc:
+                # hybrid/sliding-window caches (Qwen3.5 ArraysCache, some Gemma 4
+                # layers) cannot be snapshotted by the dense-KV prefix cache yet.
+                # Report this as an unsupported prewarm instead of crashing the
+                # request thread.
+                return {"registered": False, "tokens": 0,
+                        "ms": round((time.perf_counter() - t0) * 1000, 1),
+                        "template": template,
+                        "error": f"{type(exc).__name__}: {exc}"}
             ms = round((time.perf_counter() - t0) * 1000, 1)
             if prefix is None:
-                return {"registered": False, "tokens": 0, "ms": ms}
+                return {"registered": False, "tokens": 0, "ms": ms,
+                        "template": template}
             self.prefix = prefix
-            return {"registered": True, "tokens": prefix.num_tokens, "ms": ms}
+            return {"registered": True, "tokens": prefix.num_tokens, "ms": ms,
+                    "template": template}
 
         return self._run_on_worker(job)
 

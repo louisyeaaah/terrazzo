@@ -1,0 +1,277 @@
+{
+ "timestamp": "2026-10-28T19:43:49+1100",
+ "git_commit": "a7f8296",
+ "loadavg": [
+  4.7236328125,
+  4.15380859375,
+  3.6650390625
+ ],
+ "args": {
+  "models": "qwen3.5-0.8b,qwen3.5-2b,qwen3.5-4b,gemma4-e2b",
+  "sessions": "1,4,16",
+  "turns": 2,
+  "max_tokens": 64,
+  "system_tokens": 2000,
+  "port_base": 8980,
+  "cache_mode": "off",
+  "out": "bench/model_matrix_results.json"
+ },
+ "results": [
+  {
+   "name": "qwen3.5-0.8b",
+   "label": "Qwen3.5 0.8B · 4bit",
+   "repo": "mlx-community/Qwen3.5-0.8B-4bit",
+   "model_path": "/Users/yezhipeng/project/dsh-other/terrazzo/.hf-models/qwen3.5-0.8b",
+   "size_gb": 0.65,
+   "cache_mode": "off",
+   "workloads": {
+    "1": {
+     "sessions": 1,
+     "wall_s": 3.269,
+     "output_tokens": 36,
+     "aggregate_tok_s": 11.0,
+     "ttft_p50_s": 1.377,
+     "ttft_p95_s": 1.637,
+     "total_p95_s": 1.765,
+     "total_max_s": 1.765,
+     "prompt_tokens_median": 2488,
+     "token_sources": [
+      "usage"
+     ],
+     "mlx_peak_mb": 1279.4,
+     "peak_kv_tokens": 2512,
+     "peak_running": 1
+    },
+    "4": {
+     "sessions": 4,
+     "wall_s": 10.325,
+     "output_tokens": 144,
+     "aggregate_tok_s": 13.9,
+     "ttft_p50_s": 5.06,
+     "ttft_p95_s": 5.061,
+     "total_p95_s": 5.286,
+     "total_max_s": 5.286,
+     "prompt_tokens_median": 2488,
+     "token_sources": [
+      "usage"
+     ],
+     "mlx_peak_mb": 1973.5,
+     "peak_kv_tokens": 10048,
+     "peak_running": 4
+    },
+    "16": {
+     "sessions": 16,
+     "wall_s": 52.078,
+     "output_tokens": 498,
+     "aggregate_tok_s": 9.6,
+     "ttft_p50_s": 12.504,
+     "ttft_p95_s": 25.813,
+     "total_p95_s": 42.798,
+     "total_max_s": 45.642,
+     "prompt_tokens_median": 2485,
+     "token_sources": [
+      "usage"
+     ],
+     "mlx_peak_mb": 4565.0,
+     "peak_kv_tokens": 39488,
+     "peak_running": 16
+    }
+   },
+   "errors": [],
+   "startup_s": 5.21,
+   "prewarm_s": 0.0
+  },
+  {
+   "name": "qwen3.5-2b",
+   "label": "Qwen3.5 2B · 4bit",
+   "repo": "mlx-community/Qwen3.5-2B-4bit",
+   "model_path": "/Users/yezhipeng/project/dsh-other/terrazzo/.hf-models/qwen3.5-2b",
+   "size_gb": 1.75,
+   "cache_mode": "off",
+   "workloads": {
+    "1": {
+     "sessions": 1,
+     "wall_s": 7.979,
+     "output_tokens": 128,
+     "aggregate_tok_s": 16.0,
+     "ttft_p50_s": 3.223,
+     "ttft_p95_s": 3.408,
+     "total_p95_s": 4.073,
+     "total_max_s": 4.073,
+     "prompt_tokens_median": 2535,
+     "token_sources": [
+      "usage"
+     ],
+     "mlx_peak_mb": 1992.1,
+     "peak_kv_tokens": 2608,
+     "peak_running": 1
+    },
+    "4": {
+     "sessions": 4,
+     "wall_s": 27.283,
+     "output_tokens": 512,
+     "aggregate_tok_s": 18.8,
+     "ttft_p50_s": 11.929,
+     "ttft_p95_s": 11.93,
+     "total_p95_s": 13.812,
+     "total_max_s": 13.812,
+     "prompt_tokens_median": 2535,
+     "token_sources": [
+      "usage"
+     ],
+     "mlx_peak_mb": 2576.7,
+     "peak_kv_tokens": 10432,
+     "peak_running": 4
+    },
+    "16": {
+     "sessions": 16,
+     "wall_s": 122.831,
+     "output_tokens": 2048,
+     "aggregate_tok_s": 16.7,
+     "ttft_p50_s": 28.751,
+     "ttft_p95_s": 56.783,
+     "total_p95_s": 89.565,
+     "total_max_s": 96.098,
+     "prompt_tokens_median": 2535,
+     "token_sources": [
+      "usage"
+     ],
+     "mlx_peak_mb": 5325.7,
+     "peak_kv_tokens": 41552,
+     "peak_running": 16
+    }
+   },
+   "errors": [],
+   "startup_s": 5.26,
+   "prewarm_s": 0.0
+  },
+  {
+   "name": "qwen3.5-4b",
+   "label": "Qwen3.5 4B · 4bit",
+   "repo": "mlx-community/Qwen3.5-4B-4bit",
+   "model_path": "/Users/yezhipeng/project/dsh-other/terrazzo/.hf-models/qwen3.5-4b",
+   "size_gb": 3.06,
+   "cache_mode": "off",
+   "workloads": {
+    "1": {
+     "sessions": 1,
+     "wall_s": 19.558,
+     "output_tokens": 128,
+     "aggregate_tok_s": 6.5,
+     "ttft_p50_s": 7.966,
+     "ttft_p95_s": 8.506,
+     "total_p95_s": 10.068,
+     "total_max_s": 10.068,
+     "prompt_tokens_median": 2535,
+     "token_sources": [
+      "usage"
+     ],
+     "mlx_peak_mb": 3442.3,
+     "peak_kv_tokens": 2608,
+     "peak_running": 1
+    },
+    "4": {
+     "sessions": 4,
+     "wall_s": 72.646,
+     "output_tokens": 512,
+     "aggregate_tok_s": 7.0,
+     "ttft_p50_s": 31.926,
+     "ttft_p95_s": 31.926,
+     "total_p95_s": 36.747,
+     "total_max_s": 36.747,
+     "prompt_tokens_median": 2535,
+     "token_sources": [
+      "usage"
+     ],
+     "mlx_peak_mb": 4488.1,
+     "peak_kv_tokens": 10432,
+     "peak_running": 4
+    },
+    "16": {
+     "sessions": 16,
+     "wall_s": 307.854,
+     "output_tokens": 2048,
+     "aggregate_tok_s": 6.7,
+     "ttft_p50_s": 73.594,
+     "ttft_p95_s": 144.268,
+     "total_p95_s": 224.653,
+     "total_max_s": 241.462,
+     "prompt_tokens_median": 2517,
+     "token_sources": [
+      "usage"
+     ],
+     "mlx_peak_mb": 9621.1,
+     "peak_kv_tokens": 41344,
+     "peak_running": 16
+    }
+   },
+   "errors": [],
+   "startup_s": 5.87,
+   "prewarm_s": 0.0
+  },
+  {
+   "name": "gemma4-e2b",
+   "label": "Gemma 4 E2B · 4bit",
+   "repo": "mlx-community/gemma-4-e2b-it-4bit",
+   "model_path": "/Users/yezhipeng/project/dsh-other/terrazzo/.hf-models/gemma4-e2b",
+   "size_gb": 3.58,
+   "cache_mode": "off",
+   "workloads": {
+    "1": {
+     "sessions": 1,
+     "wall_s": 4.586,
+     "output_tokens": 76,
+     "aggregate_tok_s": 16.6,
+     "ttft_p50_s": 1.571,
+     "ttft_p95_s": 2.054,
+     "total_p95_s": 2.479,
+     "total_max_s": 2.479,
+     "prompt_tokens_median": 2669,
+     "token_sources": [
+      "usage"
+     ],
+     "mlx_peak_mb": 3356.7,
+     "peak_kv_tokens": 2720,
+     "peak_running": 1
+    },
+    "4": {
+     "sessions": 4,
+     "wall_s": 14.111,
+     "output_tokens": 304,
+     "aggregate_tok_s": 21.5,
+     "ttft_p50_s": 5.689,
+     "ttft_p95_s": 5.69,
+     "total_p95_s": 7.068,
+     "total_max_s": 7.068,
+     "prompt_tokens_median": 2669,
+     "token_sources": [
+      "usage"
+     ],
+     "mlx_peak_mb": 3693.5,
+     "peak_kv_tokens": 10880,
+     "peak_running": 4
+    },
+    "16": {
+     "sessions": 16,
+     "wall_s": 65.775,
+     "output_tokens": 1216,
+     "aggregate_tok_s": 18.5,
+     "ttft_p50_s": 14.348,
+     "ttft_p95_s": 29.574,
+     "total_p95_s": 52.13,
+     "total_max_s": 52.13,
+     "prompt_tokens_median": 2669,
+     "token_sources": [
+      "usage"
+     ],
+     "mlx_peak_mb": 5290.3,
+     "peak_kv_tokens": 43328,
+     "peak_running": 16
+    }
+   },
+   "errors": [],
+   "startup_s": 7.04,
+   "prewarm_s": 0.0
+  }
+ ]
+}

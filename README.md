@@ -76,6 +76,25 @@ vLLM's single-stream number is the second (steady-state) run: the first run afte
 startup is 15.1 tok/s / 2.95 s because of kernel warm-up. Its 4/16-session rows are
 steady state as well.
 
+### Model matrix: 2026 small models (raw, no prefix cache)
+
+Same Terrazzo process, same 2k shared system prompt, no prefix cache (the newest
+hybrid/sliding-window caches cannot be snapshotted by the dense-KV cache yet). This is a
+model/runtime comparison, not a quality benchmark. Historical models are intentionally
+excluded; Qwen3.5 and Gemma 4 are current 2026 small releases.
+
+| model | weights | 1 session | 4 sessions | 16 sessions | TTFT p50 @16 |
+|---|---:|---:|---:|---:|---:|
+| Qwen3.5 0.8B · 4bit | 0.65 GB | 11.0 tok/s | 13.9 | 9.6 | 12.5 s |
+| Qwen3.5 2B · 4bit | 1.75 GB | 16.0 | 18.8 | 16.7 | 28.8 s |
+| Qwen3.5 4B · 4bit | 3.06 GB | 6.5 | 7.0 | 6.7 | 73.6 s |
+| **Gemma 4 E2B · 4bit** | 3.58 GB | 16.6 | 21.5 | **18.5** | **14.3 s** |
+
+Short-prompt decode (128-token system, 16 sessions) is a cleaner speed signal:
+Qwen3.5 0.8B **262 tok/s**, Gemma 4 E2B 147, Qwen3.5 2B 94, Qwen3.5 4B 53. The 4B
+number is a real runtime result, not a typo; it is much slower per token in the current
+MLX path. Full tables, memory peaks and commands: [BENCHMARKS §54](BENCHMARKS.md).
+
 ### Long system prompts: pre-registration is the differentiator
 
 | prompt | terrazzo default cold TTFT | terrazzo prewarmed cold TTFT | Ollama cold TTFT | terrazzo warm-same | Ollama warm-same |
