@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Terrazzo — Apple Silicon 本地 LLM 推理</title>
-<meta name="description" content="Terrazzo 是面向 Apple Silicon 的本地 LLM 推理运行时与服务端：paged-KV 调度、连续批处理、预注册前缀缓存，OpenAI 与 Ollama 兼容 API。">
+<meta name="description" content="Terrazzo 是面向 Apple Silicon 的本地 LLM 推理服务：paged-KV 调度、前缀缓存、OpenAI/Ollama API，以及为 agent 与混合流量实测的可解释 FIFO 并发预设。">
 <meta property="og:title" content="Terrazzo — Apple Silicon 本地 LLM 推理">
-<meta property="og:description" content="在 Mac 上跑 paged-KV 推理：agent 长系统提示预注册、OpenAI + Ollama API，所有数据都有实测与诚实的 caveat。">
+<meta property="og:description" content="在 Mac 上跑 paged-KV 推理：前缀预注册、实测的 agent/mixed 并发预设、OpenAI + Ollama API。诚实数据与 caveat。">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://louisyeaaah.github.io/terrazzo/zh.html">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
@@ -23,6 +23,7 @@
     <nav class="site-nav" aria-label="主导航">
       <a href="#numbers">数据</a>
       <a href="#progress">进展</a>
+      <a href="#concurrency">并发预设</a>
       <a href="#bench">基准</a>
       <a href="#long">前缀缓存</a>
       <a href="#positioning">定位</a>
@@ -40,8 +41,8 @@
       <p class="eyebrow">Apple Silicon · MLX · 本地推理服务</p>
       <h1 id="hero-title">在 Mac 上做本地推理<br><span class="grad">按真引擎的方式。</span></h1>
       <p class="lede">
-        Terrazzo 把 DeepInfer 的 paged-KV 调度器移植到单台 Mac，封装成 OpenAI 与 Ollama
-        兼容 API，并针对真实 agent 流量里那段很长的共享系统提示做「启动预注册」前缀缓存。
+        Terrazzo 是给单台 Mac 用的 agent 推理服务：paged-KV 调度、前缀预注册、
+        OpenAI/Ollama API，以及两个实测过的 FIFO 并发预设——不需要调参也有可解释的默认值。
       </p>
       <div class="hero-actions">
         <a class="btn primary" href="#start">开始使用</a>
@@ -113,6 +114,36 @@
         <div class="t-item"><div class="d">产品化</div><h4>v0.3.0 → Terrazzo</h4><p>模型管理、<span class="mono">terrazzo</span> CLI、中英文文档、固定依赖与 head-to-head 基准。</p></div>
         <div class="t-item"><div class="d">加固</div><h4>Review 驱动的可靠性</h4><p>请求 deadline、body/并发上限、HTTP 加固、hang watchdog、TLS、<b>255 核心 + 31 内核测试</b>、Linux + macOS CI。</p></div>
         <div class="t-item"><div class="d">实测</div><h4>诚实的重新测量</h4><p>空闲机器 + 真 token 计数复测：decode <b>1.51×</b> Ollama、agent 吞吐 <b>2.2×</b>；16 会话 vLLM-Metal 领先。</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="concurrency" aria-labelledby="conc-title">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="conc-title">并发预设</h2>
+        <span class="note">shared → mixed → shared · 16 会话 · 单进程</span>
+      </div>
+      <p class="section-sub">
+        产品决策刻意很小：两个 tuned FIFO 预设，而不是自动调优引擎。以下对照固定了
+        admission batch、settle 时间和 runner 宽度，只改变 admission cap。
+      </p>
+      <div class="table-wrap">
+        <table aria-label="shared mixed shared 并发预设">
+          <thead><tr><th>方案</th><th>整体 tok/s</th><th>总耗时</th><th>shared-1 p95</th><th>mixed p95</th><th>shared-2 p95</th><th>峰值</th></tr></thead>
+          <tbody>
+            <tr><td><b>fixed4 / <span class="mono">--profile mixed</span></b></td><td class="best">26.4</td><td class="best">116.6 s</td><td>2.10 s</td><td>61.00 s</td><td>3.63 s</td><td>19.1 GB</td></tr>
+            <tr><td>oracle 16/4/16</td><td>26.0</td><td>117.9 s</td><td class="best">0.61 s</td><td>61.45 s</td><td class="best">0.69 s</td><td>19.0 GB</td></tr>
+            <tr><td>auto（opt-in）</td><td>23.9</td><td>128.4 s</td><td>0.67 s</td><td>68.24 s</td><td>3.76 s</td><td>19.1 GB</td></tr>
+            <tr><td>fixed16 / <span class="mono">--profile agent</span></td><td>22.8</td><td>134.9 s</td><td>0.68 s</td><td>73.95 s</td><td>7.03 s</td><td>40.5 GB</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout" style="margin-top:14px">
+        <b>结论：</b>fixed4 是这条序列最好的静态策略，但“接近 oracle”只成立在整体吞吐/总耗时；
+        shared 阶段 p95 仍有差距（2.10/3.63 s vs 0.61/0.69 s）。auto 能 16→4→16 且不抖动，
+        但整体没有优于 fixed4，保持 <b>opt-in</b>；手动预设仍是产品默认。完整协议与负结果：
+        <a href="https://github.com/louisyeaaah/terrazzo/blob/main/docs/CO-DESIGN.md">CO-DESIGN §13</a>。
       </div>
     </div>
   </section>
@@ -263,8 +294,8 @@
           <h3>单机 agent 流量</h3>
           <p>
             16 并发会话吞吐是 Ollama 的 2.2×；2k–8k 共享提示预注册后首 token 快 10–50×；
-            单流和 4 会话延迟优于 vLLM-Metal。一个进程同时说 OpenAI 与 Ollama，
-            带 tools、JSON Schema 和模型管理。
+            单流和 4 会话延迟优于 vLLM-Metal。两个实测 FIFO 预设（agent/mixed）让默认
+            并发选择可解释；一个进程同时说 OpenAI 与 Ollama，带 tools、JSON Schema 和模型管理。
           </p>
         </div>
         <div class="card lose">
@@ -396,7 +427,7 @@ curl localhost:8080/api/chat -d '{
       <div class="validation">
         <div class="vcard"><div class="n">核心套件</div><div class="v">255</div><div class="s">测试，1 skipped（需要模型）</div><a href="https://github.com/louisyeaaah/terrazzo/actions/workflows/ci.yml">CI 历史 ↗</a></div>
         <div class="vcard"><div class="n">实验内核</div><div class="v">31</div><div class="s">测试，3 skipped</div><a href="https://github.com/louisyeaaah/terrazzo/tree/main/experiments">experiments ↗</a></div>
-        <div class="vcard"><div class="n">纯 Python（MLX blocked）</div><div class="v">129</div><div class="s">在 Linux CI 上跑</div><a href="https://github.com/louisyeaaah/terrazzo/actions/workflows/ci.yml">workflow 记录 ↗</a></div>
+        <div class="vcard"><div class="n">纯 Python（MLX blocked）</div><div class="v">158</div><div class="s">在 Linux CI 上跑</div><a href="https://github.com/louisyeaaah/terrazzo/actions/workflows/ci.yml">workflow 记录 ↗</a></div>
         <div class="vcard"><div class="n">CI job</div><div class="v">3</div><div class="s">Linux、macOS+Metal、手动模型 E2E</div><a href="https://github.com/louisyeaaah/terrazzo/actions">actions ↗</a></div>
       </div>
       <p class="callout">

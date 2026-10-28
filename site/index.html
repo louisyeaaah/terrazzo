@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Terrazzo — local LLM inference for Apple Silicon</title>
-<meta name="description" content="Terrazzo is a local LLM inference runtime and server for Apple Silicon: paged-KV scheduling, continuous batching, pre-registered prefix caching, OpenAI and Ollama compatible APIs.">
+<meta name="description" content="Terrazzo is a local LLM inference server for Apple Silicon: paged-KV scheduling, prefix caching, OpenAI/Ollama APIs, and measured FIFO concurrency presets for agent and mixed traffic.">
 <meta property="og:title" content="Terrazzo — local LLM inference for Apple Silicon">
-<meta property="og:description" content="Paged-KV scheduling on MLX, agent-oriented prefix pre-registration, OpenAI + Ollama APIs. Measured numbers, honest caveats.">
+<meta property="og:description" content="Paged-KV scheduling on MLX, prefix pre-registration, measured agent/mixed concurrency presets. Honest numbers and caveats.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://louisyeaaah.github.io/terrazzo/">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
@@ -23,6 +23,7 @@
     <nav class="site-nav" aria-label="Main">
       <a href="#numbers">Numbers</a>
       <a href="#progress">Progress</a>
+      <a href="#concurrency">Concurrency</a>
       <a href="#bench">Benchmarks</a>
       <a href="#long">Prefix cache</a>
       <a href="#positioning">Positioning</a>
@@ -40,9 +41,9 @@
       <p class="eyebrow">Apple Silicon · MLX · local inference server</p>
       <h1 id="hero-title">Local LLM inference<br><span class="grad">built like a real engine.</span></h1>
       <p class="lede">
-        Terrazzo ports DeepInfer's paged-KV scheduler to a single Mac, then wraps it in
-        OpenAI- and Ollama-compatible APIs — with pre-registered shared-prefix caching
-        for the long system prompts that real agent traffic has.
+        Terrazzo is an agent inference server for one Mac: paged-KV scheduling,
+        pre-registered prefix caching, OpenAI/Ollama APIs, and two measured FIFO
+        concurrency presets — no tuning required to get a sane local default.
       </p>
       <div class="hero-actions">
         <a class="btn primary" href="#start">Get started</a>
@@ -115,6 +116,39 @@
         <div class="t-item"><div class="d">PRODUCTIZE</div><h4>v0.3.0 → Terrazzo</h4><p>Model store, <span class="mono">terrazzo</span> CLI, dual-language docs, pinned dependencies and head-to-head benchmarks.</p></div>
         <div class="t-item"><div class="d">HARDEN</div><h4>Review-driven reliability</h4><p>Request deadlines, body/concurrency limits, HTTP hardening, hang watchdog, TLS, <b>255 core + 31 kernel tests</b>, Linux + macOS CI.</p></div>
         <div class="t-item"><div class="d">MEASURE</div><h4>Honest re-measurement</h4><p>Quiet-machine rerun with true token counts: <b>1.51×</b> Ollama decode, <b>2.2×</b> agent throughput; vLLM-Metal leads at 16 sessions.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="concurrency" aria-labelledby="conc-title">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="conc-title">Concurrency presets</h2>
+        <span class="note">shared → mixed → shared · 16 sessions · one process</span>
+      </div>
+      <p class="section-sub">
+        The product decision is deliberately small: two tuned FIFO presets, not an
+        auto-tuned engine. This corrected single-variable run keeps admission batching,
+        settle time and runner width identical; only the admission cap changes.
+      </p>
+      <div class="table-wrap">
+        <table aria-label="Concurrency presets shared mixed shared">
+          <thead><tr><th>Arm</th><th>Overall tok/s</th><th>Wall</th><th>Shared-1 p95</th><th>Mixed p95</th><th>Shared-2 p95</th><th>Peak</th></tr></thead>
+          <tbody>
+            <tr><td><b>fixed4 / <span class="mono">--profile mixed</span></b></td><td class="best">26.4</td><td class="best">116.6 s</td><td>2.10 s</td><td>61.00 s</td><td>3.63 s</td><td>19.1 GB</td></tr>
+            <tr><td>oracle 16/4/16</td><td>26.0</td><td>117.9 s</td><td class="best">0.61 s</td><td>61.45 s</td><td class="best">0.69 s</td><td>19.0 GB</td></tr>
+            <tr><td>auto (opt-in)</td><td>23.9</td><td>128.4 s</td><td>0.67 s</td><td>68.24 s</td><td>3.76 s</td><td>19.1 GB</td></tr>
+            <tr><td>fixed16 / <span class="mono">--profile agent</span></td><td>22.8</td><td>134.9 s</td><td>0.68 s</td><td>73.95 s</td><td>7.03 s</td><td>40.5 GB</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout" style="margin-top:14px">
+        <b>What this means:</b> fixed4 is the best static policy on this sequence and is
+        close to the oracle on aggregate throughput and total wall time only — shared-phase
+        p95 still differs (2.10/3.63 s vs 0.61/0.69 s). Auto switches 16→4→16 without
+        flapping, but does not beat fixed4 overall; it stays <b>opt-in</b>. Manual presets
+        remain the product default. Full protocol and negative results:
+        <a href="https://github.com/louisyeaaah/terrazzo/blob/main/docs/CO-DESIGN.md">CO-DESIGN §13</a>.
       </div>
     </div>
   </section>
@@ -267,7 +301,8 @@
           <p>
             2.2× Ollama's throughput at 16 concurrent sessions, pre-warmed first token 10–50× faster
             on 2k–8k shared prompts, and single-stream / 4-session latency better than vLLM-Metal.
-            One process speaks OpenAI and Ollama, with tools, JSON Schema and a model store.
+            Two measured FIFO presets (agent/mixed) make the default concurrency choice
+            explainable; one process speaks OpenAI and Ollama with tools and a model store.
           </p>
         </div>
         <div class="card lose">
@@ -399,7 +434,7 @@ curl localhost:8080/api/chat -d '{
       <div class="validation">
         <div class="vcard"><div class="n">core suite</div><div class="v">255</div><div class="s">tests, 1 skipped (needs a model)</div><a href="https://github.com/louisyeaaah/terrazzo/actions/workflows/ci.yml">CI history ↗</a></div>
         <div class="vcard"><div class="n">experimental kernels</div><div class="v">31</div><div class="s">tests, 3 skipped</div><a href="https://github.com/louisyeaaah/terrazzo/tree/main/experiments">experiments ↗</a></div>
-        <div class="vcard"><div class="n">pure Python, MLX blocked</div><div class="v">129</div><div class="s">tests run on Linux CI</div><a href="https://github.com/louisyeaaah/terrazzo/actions/workflows/ci.yml">workflow runs ↗</a></div>
+        <div class="vcard"><div class="n">pure Python, MLX blocked</div><div class="v">158</div><div class="s">tests run on Linux CI</div><a href="https://github.com/louisyeaaah/terrazzo/actions/workflows/ci.yml">workflow runs ↗</a></div>
         <div class="vcard"><div class="n">CI jobs</div><div class="v">3</div><div class="s">Linux, macOS+Metal, manual model E2E</div><a href="https://github.com/louisyeaaah/terrazzo/actions">actions ↗</a></div>
       </div>
       <p class="callout">
