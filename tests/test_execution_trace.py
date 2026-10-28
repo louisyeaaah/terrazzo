@@ -212,3 +212,80 @@ class LifecycleTest(unittest.TestCase):
             [SimpleNamespace(uid=7, token=3, finish_reason=None, prompt_cache=None)])
         self.assertEqual(seq.output_token_ids, [3])
         self.assertEqual(out, [])
+
+
+    def test_runner_remove_keeps_mapping_when_batcher_raises(self):
+        from terrazzo.runner import MLXRunner
+        seq = Sequence(request_id="x", prompt_token_ids=[1, 2],
+                       sampling_params=SamplingParams(max_tokens=4))
+        runner = MLXRunner.__new__(MLXRunner)
+        runner.uid_to_seq = {7: seq}
+        class BadBG:
+            def remove(self, uids, return_prompt_caches=False):
+                raise RuntimeError("batcher removal failed")
+        runner.bg = BadBG()
+        with self.assertRaises(RuntimeError):
+            runner.remove([seq])
+        self.assertEqual(runner.uid_to_seq, {7: seq})
+
+    def test_abort_failure_recovers_and_returns_false(self):
+        import queue as _queue
+        e = self._engine()
+        e._executor_broken = False
+        seq = Sequence(request_id="r-bad", prompt_token_ids=[1, 2],
+                       sampling_params=SamplingParams(max_tokens=4))
+        e._inserted = {"r-bad": 7}
+        reset = {"called": False}
+        class FakeRunner:
+            uid_to_seq = {7: seq}
+            def remove(self, seqs):
+                raise RuntimeError("batcher removal failed")
+            def reset(self):
+                reset["called"] = True
+                self.uid_to_seq.clear()
+        e.runner = FakeRunner()
+        class FakeScheduler:
+            waiting = [seq]
+            running = []
+            def abort(self, rid):
+                return True
+        e.scheduler = FakeScheduler()
+        q = _queue.Queue()
+        e._streams["r-bad"] = q
+        e._outputs["r-bad"] = object()
+        self.assertFalse(e.abort("r-bad"))
+        self.assertTrue(reset["called"])
+        self.assertFalse(e._executor_broken)
+        self.assertEqual(e._inserted, {})
+        self.assertEqual(e.runner.uid_to_seq, {})
+        event = q.get(timeout=1)
+        self.assertEqual(event["finish_reason"], "error")
+
+    def test_abort_failure_reset_failure_marks_broken(self):
+        import queue as _queue
+        e = self._engine()
+        e._executor_broken = False
+        seq = Sequence(request_id="r-broken", prompt_token_ids=[1, 2],
+                       sampling_params=SamplingParams(max_tokens=4))
+        e._inserted = {"r-broken": 7}
+        class FakeRunner:
+            uid_to_seq = {7: seq}
+            def remove(self, seqs):
+                raise RuntimeError("batcher removal failed")
+            def reset(self):
+                raise RuntimeError("rebuild failed")
+        e.runner = FakeRunner()
+        class FakeScheduler:
+            waiting = [seq]
+            running = []
+            def abort(self, rid):
+                return True
+        e.scheduler = FakeScheduler()
+        q = _queue.Queue()
+        e._streams["r-broken"] = q
+        e._outputs["r-broken"] = object()
+        self.assertFalse(e.abort("r-broken"))
+        self.assertTrue(e._executor_broken)
+        self.assertEqual(q.get(timeout=1)["finish_reason"], "error")
+        with self.assertRaises(RuntimeError):
+            e.add_request(prompt_token_ids=[1], params=SamplingParams(max_tokens=1))

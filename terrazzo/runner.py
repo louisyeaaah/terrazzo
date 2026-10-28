@@ -166,11 +166,14 @@ class MLXRunner:
     def remove(self, seqs: list[Sequence], return_caches: bool = False) -> dict:
         _require_mlx()
         uids = [uid for uid, s in self.uid_to_seq.items() if s in seqs]
-        for uid in uids:
-            self.uid_to_seq.pop(uid, None)
         if not uids:
             return {}
-        return self.bg.remove(uids, return_prompt_caches=return_caches)
+        # Keep the mapping until the batcher confirms removal. If bg.remove()
+        # raises, the caller must not lose the only handle to the live request.
+        result = self.bg.remove(uids, return_prompt_caches=return_caches)
+        for uid in uids:
+            self.uid_to_seq.pop(uid, None)
+        return result
 
     def extract_cache(self, seq: Sequence):
         _require_mlx()

@@ -297,13 +297,23 @@ class Engine:
             # Remove from the real executor too. MLXRunner.remove() takes Sequence
             # objects (it resolves uids itself) and frees the BatchGenerator entry;
             # scheduler.abort() only handles the logical blocks.
+            remove_error = None
             if seq is not None:
                 try:
                     self.runner.remove([seq])
-                except Exception:
-                    pass
+                except Exception as exc:
+                    remove_error = exc
             if uid is not None:
                 self._inserted.pop(request_id, None)
+            if remove_error is not None:
+                # Do not report success when the executor still owns the request.
+                # Treat it as a fatal step failure: abort the remaining requests,
+                # rebuild the batcher if possible, or mark the executor broken.
+                try:
+                    self.handle_failure(remove_error)
+                except Exception:
+                    self._executor_broken = True
+                return False
         if ok:
             # terminate a handler waiting on this stream as well, then release it
             with self._stream_lock:
