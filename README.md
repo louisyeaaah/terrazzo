@@ -95,6 +95,28 @@ Qwen3.5 0.8B **262 tok/s**, Gemma 4 E2B 147, Qwen3.5 2B 94, Qwen3.5 4B 53. The 4
 number is a real runtime result, not a typo; it is much slower per token in the current
 MLX path. Full tables, memory peaks and commands: [BENCHMARKS §54](BENCHMARKS.md).
 
+### vs Ollama (same 2026 models)
+
+Single-stream decode (short prompt, 128 tokens): Terrazzo is **1.8–2.35× faster** than
+Ollama 0.34.4 on the same models. At 16 concurrent sessions with a 2k shared prompt,
+Ollama is faster in aggregate on these particular models because Terrazzo has to run them
+without its prefix cache (new hybrid/sliding-window caches are not snapshot-compatible)
+while Ollama can reuse the prompt state.
+
+| model | decode: Terrazzo / Ollama | 16-session: Terrazzo / Ollama | TTFT p50: Terrazzo / Ollama |
+|---|---:|---:|---:|
+| Qwen3.5 0.8B | 133.2 / 58.1 tok/s | 9.6 / **50.0** | **12.5 s** / 19.3 s |
+| Qwen3.5 2B | 102.1 / 57.0 | 16.7 / **24.2** | **28.8 s** / 39.8 s |
+| Qwen3.5 4B | 46.7 / 25.8 | 6.7 / **9.4** | **73.6 s** / 88.2 s |
+| Gemma 4 E2B | 77.2 / 32.8 | 18.5 / **20.5** | 14.3 s / **7.1 s** |
+
+Caveats: Ollama was started with `OLLAMA_NUM_PARALLEL=16` and 8k context; Qwen3.5 0.8B
+in Ollama is Q8_0 vs MLX 4bit, while the others are Q4_K_M vs MLX 4bit. This is an
+end-to-end user comparison, not a kernel-level one. For the older Qwen3 models, where
+Terrazzo's prefix cache works, Terrazzo wins the 16-session agent case; that result does
+not transfer to these new cache architectures yet. Raw data:
+[bench/model_vs_ollama_results.json](bench/model_vs_ollama_results.json).
+
 ### Long system prompts: pre-registration is the differentiator
 
 | prompt | terrazzo default cold TTFT | terrazzo prewarmed cold TTFT | Ollama cold TTFT | terrazzo warm-same | Ollama warm-same |

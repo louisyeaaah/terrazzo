@@ -1,0 +1,115 @@
+{
+ "timestamp": "2026-10-28T22:50:34+1100",
+ "note": "Terrazzo raw no-prefix-cache (MLX 4bit) vs Ollama 0.34.4; Ollama quant per model below",
+ "ollama": {
+  "version": "0.34.4",
+  "num_parallel": 16,
+  "context_length": 8192,
+  "models": {
+   "qwen3.5:0.8b": "Q8_0",
+   "qwen3.5:2b-q4_K_M": "Q4_K_M",
+   "qwen3.5:4b-q4_K_M": "Q4_K_M",
+   "gemma4:e2b-it-q4_K_M": "Q4_K_M"
+  }
+ },
+ "decode": [
+  {
+   "model": "Qwen3.5 0.8B",
+   "terrazzo_tok_s": 133.2,
+   "ollama_tok_s": 58.1,
+   "ratio": 2.29
+  },
+  {
+   "model": "Qwen3.5 2B",
+   "terrazzo_tok_s": 102.1,
+   "ollama_tok_s": 57.0,
+   "ratio": 1.79
+  },
+  {
+   "model": "Qwen3.5 4B",
+   "terrazzo_tok_s": 46.7,
+   "ollama_tok_s": 25.8,
+   "ratio": 1.81
+  },
+  {
+   "model": "Gemma 4 E2B",
+   "terrazzo_tok_s": 77.2,
+   "ollama_tok_s": 32.8,
+   "ratio": 2.35
+  }
+ ],
+ "agent": [
+  {
+   "model": "Qwen3.5 0.8B",
+   "sessions": 4,
+   "terrazzo_tok_s": 13.9,
+   "ollama_tok_s": 48.3,
+   "terrazzo_ttft_p50": 5.06,
+   "ollama_ttft_p50": 4.17
+  },
+  {
+   "model": "Qwen3.5 2B",
+   "sessions": 4,
+   "terrazzo_tok_s": 18.8,
+   "ollama_tok_s": 23.0,
+   "terrazzo_ttft_p50": 11.93,
+   "ollama_ttft_p50": 9.03
+  },
+  {
+   "model": "Qwen3.5 4B",
+   "sessions": 4,
+   "terrazzo_tok_s": 7.0,
+   "ollama_tok_s": 8.7,
+   "terrazzo_ttft_p50": 31.93,
+   "ollama_ttft_p50": 19.34
+  },
+  {
+   "model": "Gemma 4 E2B",
+   "sessions": 4,
+   "terrazzo_tok_s": 21.5,
+   "ollama_tok_s": 18.8,
+   "terrazzo_ttft_p50": 5.69,
+   "ollama_ttft_p50": 6.57
+  },
+  {
+   "model": "Qwen3.5 0.8B",
+   "sessions": 16,
+   "terrazzo_tok_s": 9.6,
+   "ollama_tok_s": 50.0,
+   "terrazzo_ttft_p50": 12.5,
+   "ollama_ttft_p50": 19.29
+  },
+  {
+   "model": "Qwen3.5 2B",
+   "sessions": 16,
+   "terrazzo_tok_s": 16.7,
+   "ollama_tok_s": 24.2,
+   "terrazzo_ttft_p50": 28.75,
+   "ollama_ttft_p50": 39.83
+  },
+  {
+   "model": "Qwen3.5 4B",
+   "sessions": 16,
+   "terrazzo_tok_s": 6.7,
+   "ollama_tok_s": 9.4,
+   "terrazzo_ttft_p50": 73.59,
+   "ollama_ttft_p50": 88.22
+  },
+  {
+   "model": "Gemma 4 E2B",
+   "sessions": 16,
+   "terrazzo_tok_s": 18.5,
+   "ollama_tok_s": 20.5,
+   "terrazzo_ttft_p50": 14.35,
+   "ollama_ttft_p50": 7.14
+  }
+ ],
+ "environment": {
+  "loadavg": [
+   4.7685546875,
+   5.49755859375,
+   5.2802734375
+  ],
+  "machine": "Apple M1 Max 64GB"
+ }
+}

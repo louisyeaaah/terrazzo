@@ -88,6 +88,24 @@ cache 暂时无法被 dense-KV 前缀缓存快照）。这是**模型/运行时�
 Gemma 4 E2B 147、Qwen3.5 2B 94、Qwen3.5 4B 53。4B 偏慢是当前 MLX 路径的真实结果，
 不是笔误。完整表格、峰值内存和命令见 [BENCHMARKS §54](BENCHMARKS.md)。
 
+### 与 Ollama 对比（同一批 2026 模型）
+
+单流 decode（短提示、128 token）：Terrazzo 比 Ollama 0.34.4 **快 1.8–2.35×**。但 16 并发、
+2k 共享提示时，Ollama 在这批新模型上整体更快：Terrazzo 目前无法为 Qwen3.5/Gemma 4 的
+hybrid/sliding cache 做前缀快照，只能走无缓存模式，而 Ollama 能复用提示状态。
+
+| 模型 | decode：Terrazzo / Ollama | 16 会话：Terrazzo / Ollama | TTFT p50：Terrazzo / Ollama |
+|---|---:|---:|---:|
+| Qwen3.5 0.8B | 133.2 / 58.1 tok/s | 9.6 / **50.0** | **12.5 s** / 19.3 s |
+| Qwen3.5 2B | 102.1 / 57.0 | 16.7 / **24.2** | **28.8 s** / 39.8 s |
+| Qwen3.5 4B | 46.7 / 25.8 | 6.7 / **9.4** | **73.6 s** / 88.2 s |
+| Gemma 4 E2B | 77.2 / 32.8 | 18.5 / **20.5** | 14.3 s / **7.1 s** |
+
+注意：Ollama 使用 `OLLAMA_NUM_PARALLEL=16`、8k context；Qwen3.5 0.8B 在 Ollama 是 Q8_0，
+其他是 Q4_K_M，Terrazzo 均为 MLX 4bit。这是端到端用户体验对比，不是 kernel 级对比。
+老 Qwen3 模型（前缀缓存可用）上 Terrazzo 的 16 会话 agent 结果更好，但不能直接套到这批
+新 cache 架构。原始数据：[bench/model_vs_ollama_results.json](bench/model_vs_ollama_results.json)。
+
 ### 长系统提示：预注册是差异点
 
 | 提示长度 | terrazzo 默认 cold TTFT | terrazzo 预注册 cold TTFT | Ollama cold TTFT | terrazzo warm-same | Ollama warm-same |

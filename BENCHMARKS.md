@@ -2236,3 +2236,40 @@ python bench/model_matrix.py --models qwen3.5-0.8b,qwen3.5-2b,qwen3.5-4b,gemma4-
   --cache-mode off --sessions 1,4,16 --system-tokens 2000
 python bench/model_matrix.py ... --system-tokens 128 --out bench/model_matrix_short_results.json
 ```
+
+## 55. 2026 小模型 vs Ollama（2026-10-28）
+
+同一台 M1 Max 64GB。Terrazzo 走 raw 模式（无前缀缓存，MLX 4bit）；Ollama 0.34.4 使用
+`OLLAMA_NUM_PARALLEL=16`、`OLLAMA_CONTEXT_LENGTH=8192`，模型 quant 见下。Ollama 的
+qwen3.5:0.8b 是 Q8_0，其余 q4_K_M；Terrazzo 全部 MLX 4bit。不是严格 kernel 对比。
+
+### 55.1 单流 decode（短提示，128 tokens）
+
+| 模型 | Terrazzo | Ollama | 倍数 |
+|---|---:|---:|---:|
+| Qwen3.5 0.8B | 133.2 tok/s | 58.1 | 2.29× |
+| Qwen3.5 2B | 102.1 | 57.0 | 1.79× |
+| Qwen3.5 4B | 46.7 | 25.8 | 1.81× |
+| Gemma 4 E2B | 77.2 | 32.8 | 2.35× |
+
+### 55.2 2k 共享提示，16 会话，2 turns × 64
+
+| 模型 | Terrazzo tok/s | Ollama tok/s | T TTFT p50 | O TTFT p50 |
+|---|---:|---:|---:|---:|
+| Qwen3.5 0.8B | 9.6 | **50.0** | **12.5 s** | 19.3 s |
+| Qwen3.5 2B | 16.7 | **24.2** | **28.8 s** | 39.8 s |
+| Qwen3.5 4B | 6.7 | **9.4** | **73.6 s** | 88.2 s |
+| Gemma 4 E2B | 18.5 | **20.5** | 14.3 s | **7.1 s** |
+
+### 55.3 结论（诚实版）
+
+- 单流 decode：Terrazzo 的 MLX 路径明显更快（1.8–2.35×）。
+- 16 会话 agent：这批新模型上 Ollama 整体吞吐更高。主要原因是 Terrazzo 的前缀缓存
+  目前不支持 Qwen3.5 ArraysCache / Gemma 4 sliding cache，只能无缓存跑；Ollama 自动复用
+  prompt 状态并用自己的并行调度。
+- TTFT 并非一边倒：Qwen3.5 三个尺寸 Terrazzo 更低，Gemma 4 Ollama 更低。
+- 这组数据不能用来宣称“Terrazzo 在 2026 小模型上全面胜过 Ollama”；只能说明单流
+  decode 有优势，而共享长提示的 agent 场景仍受 cache 兼容性限制。
+- 老 Qwen3 系列（前缀缓存可工作）此前 16 会话 Terrazzo 领先；不要把那个结果外推到新架构。
+
+原始数据：`bench/model_vs_ollama_results.json`。

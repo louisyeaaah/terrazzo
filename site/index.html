@@ -246,7 +246,7 @@
   <section id="models" aria-labelledby="models-title">
     <div class="wrap">
       <div class="section-head">
-        <h2 id="models-title">2026 small models</h2>
+        <h2 id="models-title">2026 small models vs Ollama</h2>
         <span class="note">raw serving · no prefix cache · 16 sessions</span>
       </div>
       <p class="section-sub">
@@ -256,20 +256,21 @@
       </p>
       <div class="table-wrap">
         <table aria-label="2026 small model matrix">
-          <thead><tr><th>Model</th><th>Weights</th><th>2k prompt · 16 sess</th><th>2k TTFT p50</th><th>128 prompt · 16 sess</th></tr></thead>
+          <thead><tr><th>Model</th><th>Weights</th><th>T 2k · 16</th><th>O 2k · 16</th><th>T TTFT</th><th>O TTFT</th><th>128 · 16</th></tr></thead>
           <tbody>
-            <tr><td>Qwen3.5 0.8B · 4bit</td><td>0.65 GB</td><td>9.6 tok/s</td><td>12.5 s</td><td class="best">262 tok/s</td></tr>
-            <tr><td>Qwen3.5 2B · 4bit</td><td>1.75 GB</td><td>16.7 tok/s</td><td>28.8 s</td><td>94 tok/s</td></tr>
-            <tr><td>Qwen3.5 4B · 4bit</td><td>3.06 GB</td><td>6.7 tok/s</td><td>73.6 s</td><td>53 tok/s</td></tr>
-            <tr><td><b>Gemma 4 E2B · 4bit</b></td><td>3.58 GB</td><td class="best">18.5 tok/s</td><td class="best">14.3 s</td><td>147 tok/s</td></tr>
+            <tr><td>Qwen3.5 0.8B · 4bit</td><td>0.65 GB</td><td>9.6 tok/s</td><td class="best">50.0</td><td>12.5 s</td><td>19.3 s</td><td class="best">262 tok/s</td></tr>
+            <tr><td>Qwen3.5 2B · 4bit</td><td>1.75 GB</td><td>16.7 tok/s</td><td class="best">24.2</td><td>28.8 s</td><td>39.8 s</td><td>94 tok/s</td></tr>
+            <tr><td>Qwen3.5 4B · 4bit</td><td>3.06 GB</td><td>6.7 tok/s</td><td class="best">9.4</td><td>73.6 s</td><td>88.2 s</td><td>53 tok/s</td></tr>
+            <tr><td><b>Gemma 4 E2B · 4bit</b></td><td>3.58 GB</td><td>18.5 tok/s</td><td class="best">20.5</td><td>14.3 s</td><td>7.1 s</td><td>147 tok/s</td></tr>
           </tbody>
         </table>
       </div>
       <p class="callout" style="margin-top:14px">
-        <b>Read this as raw model speed, not model quality.</b> Gemma 4 E2B wins this
-        2k-prompt matrix; Qwen3.5 0.8B wins short-prompt throughput. The Qwen3.5 4B
-        result is a real MLX-path number, not a typo. Full tables, memory and the
-        prefix-cache limitation: <a href="https://github.com/louisyeaaah/terrazzo/blob/main/BENCHMARKS.md">BENCHMARKS §54</a>.
+        <b>T=Terrazzo, O=Ollama 0.34.4</b> (16 parallel, 8k context). Single-stream decode:
+        Terrazzo is 1.8–2.35× faster. At 16 sessions Ollama leads on these new models because
+        Terrazzo cannot use its prefix cache with Qwen3.5/Gemma 4 caches yet. This is raw model
+        speed, not quality; Qwen3.5 4B being slow is a real MLX-path result. Full tables:
+        <a href="https://github.com/louisyeaaah/terrazzo/blob/main/BENCHMARKS.md">BENCHMARKS §54–55</a>.
       </p>
     </div>
   </section>
