@@ -90,21 +90,25 @@ Gemma 4 E2B 147、Qwen3.5 2B 94、Qwen3.5 4B 53。4B 偏慢是当前 MLX 路径�
 
 ### 与 Ollama 对比（同一批 2026 模型）
 
-单流 decode（短提示、128 token）：Terrazzo 比 Ollama 0.34.4 **快 1.8–2.35×**。但 16 并发、
-2k 共享提示时，Ollama 在这批新模型上整体更快：Terrazzo 目前无法为 Qwen3.5/Gemma 4 的
-hybrid/sliding cache 做前缀快照，只能走无缓存模式，而 Ollama 能复用提示状态。
+**仅 decode**（短提示、128 token）：这个配置下 Terrazzo 的 MLX 路径快 1.8–2.35×。
+但它不含排队、prefill 和首 token 等待，不等于端到端更快；Qwen3.5 0.8B 还是 MLX 4bit
+对 Ollama Q8_0，不能把倍数归因于引擎。
 
-| 模型 | decode：Terrazzo / Ollama | 16 会话：Terrazzo / Ollama | TTFT p50：Terrazzo / Ollama |
-|---|---:|---:|---:|
-| Qwen3.5 0.8B | 133.2 / 58.1 tok/s | 9.6 / **50.0** | **12.5 s** / 19.3 s |
-| Qwen3.5 2B | 102.1 / 57.0 | 16.7 / **24.2** | **28.8 s** / 39.8 s |
-| Qwen3.5 4B | 46.7 / 25.8 | 6.7 / **9.4** | **73.6 s** / 88.2 s |
-| Gemma 4 E2B | 77.2 / 32.8 | 18.5 / **20.5** | 14.3 s / **7.1 s** |
+16 会话 + 2k 共享提示时，Ollama 在这批模型上总吞吐更高。已知 Terrazzo 目前无法使用
+前缀缓存，Ollama 能复用提示状态；但 cache、调度、量化和计算路径各贡献多少**尚未隔离**。
+另外两组实际生成 token 数不同，所以 aggregate tok/s 不能直接横比。
 
-注意：Ollama 使用 `OLLAMA_NUM_PARALLEL=16`、8k context；Qwen3.5 0.8B 在 Ollama 是 Q8_0，
-其他是 Q4_K_M，Terrazzo 均为 MLX 4bit。这是端到端用户体验对比，不是 kernel 级对比。
-老 Qwen3 模型（前缀缓存可用）上 Terrazzo 的 16 会话 agent 结果更好，但不能直接套到这批
-新 cache 架构。原始数据：[bench/model_vs_ollama_results.json](bench/model_vs_ollama_results.json)。
+| 模型 | decode T / O | 16 会话 tok/s T / O | TTFT p50 T / O | 完成 p95 T / O | 实际生成 tokens T / O |
+|---|---:|---:|---:|---:|---:|
+| Qwen3.5 0.8B | 133.2 / 58.1 | 9.6 / 50.0 | 12.5 / 19.3 s | 42.8 / 20.9 s | 498 / 2044 |
+| Qwen3.5 2B | 102.1 / 57.0 | 16.7 / 24.2 | 28.8 / 39.8 s | 89.6 / 41.6 s | 2048 / 2048 |
+| Qwen3.5 4B | 46.7 / 25.8 | 6.7 / 9.4 | 73.6 / 88.2 s | 224.7 / 94.0 s | 2048 / 1752 |
+| Gemma 4 E2B | 77.2 / 32.8 | 18.5 / 20.5 | 14.3 / 7.1 s | 52.1 / 90.3 s | 1216 / 1994 |
+
+Qwen3.5 是「Terrazzo 更早开始、但更晚完成」；Gemma 4 则 Terrazzo 完成更早。TTFT 单独
+看会误导。Ollama 用 16 并行、8k context；其他模型是 Q4_K_M 对 MLX 4bit。没有质量评测，
+因此不给“综合最好模型”结论。原始数据：
+[bench/model_vs_ollama_results.json](bench/model_vs_ollama_results.json)。
 
 ### 长系统提示：预注册是差异点
 

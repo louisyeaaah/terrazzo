@@ -266,10 +266,13 @@
         </table>
       </div>
       <p class="callout" style="margin-top:14px">
-        <b>T=Terrazzo, O=Ollama 0.34.4</b> (16 parallel, 8k context). Single-stream decode:
-        Terrazzo is 1.8–2.35× faster. At 16 sessions Ollama leads on these new models because
-        Terrazzo cannot use its prefix cache with Qwen3.5/Gemma 4 caches yet. This is raw model
-        speed, not quality; Qwen3.5 4B being slow is a real MLX-path result. Full tables:
+        <b>T=Terrazzo, O=Ollama 0.34.4</b> (16 parallel, 8k context). Terrazzo's
+        single-stream <em>decode-only</em> number is faster in this configuration, but that
+        excludes queueing, prefill and first-token wait. At 16 sessions Ollama has higher
+        aggregate throughput on these models. Terrazzo cannot use its prefix cache with
+        Qwen3.5/Gemma 4 caches yet; how much of the gap that explains is <b>not isolated</b>.
+        The runs also generated different token counts, so aggregate tok/s is not
+        like-for-like. No quality evaluation, so no "best model" claim. Full tables:
         <a href="https://github.com/louisyeaaah/terrazzo/blob/main/BENCHMARKS.md">BENCHMARKS §54–55</a>.
       </p>
     </div>

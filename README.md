@@ -97,24 +97,27 @@ MLX path. Full tables, memory peaks and commands: [BENCHMARKS §54](BENCHMARKS.m
 
 ### vs Ollama (same 2026 models)
 
-Single-stream decode (short prompt, 128 tokens): Terrazzo is **1.8–2.35× faster** than
-Ollama 0.34.4 on the same models. At 16 concurrent sessions with a 2k shared prompt,
-Ollama is faster in aggregate on these particular models because Terrazzo has to run them
-without its prefix cache (new hybrid/sliding-window caches are not snapshot-compatible)
-while Ollama can reuse the prompt state.
+**Decode-only** (short prompt, 128 tokens): Terrazzo's MLX path is 1.8–2.35× faster in
+this configuration. This is not end-to-end: it excludes queueing, prefill and first-token
+wait. Also, Qwen3.5 0.8B is MLX 4bit vs Ollama Q8_0, so that row cannot isolate the engine.
 
-| model | decode: Terrazzo / Ollama | 16-session: Terrazzo / Ollama | TTFT p50: Terrazzo / Ollama |
-|---|---:|---:|---:|
-| Qwen3.5 0.8B | 133.2 / 58.1 tok/s | 9.6 / **50.0** | **12.5 s** / 19.3 s |
-| Qwen3.5 2B | 102.1 / 57.0 | 16.7 / **24.2** | **28.8 s** / 39.8 s |
-| Qwen3.5 4B | 46.7 / 25.8 | 6.7 / **9.4** | **73.6 s** / 88.2 s |
-| Gemma 4 E2B | 77.2 / 32.8 | 18.5 / **20.5** | 14.3 s / **7.1 s** |
+At 16 sessions with a 2k shared prompt, Ollama has higher aggregate throughput in this
+test. Terrazzo cannot use its prefix cache with these models yet; Ollama can reuse prompt
+state. How much of the gap comes from cache, scheduling, quantization or compute is **not
+isolated**, and the runs generated different numbers of tokens — so aggregate tok/s is not
+a like-for-like comparison.
 
-Caveats: Ollama was started with `OLLAMA_NUM_PARALLEL=16` and 8k context; Qwen3.5 0.8B
-in Ollama is Q8_0 vs MLX 4bit, while the others are Q4_K_M vs MLX 4bit. This is an
-end-to-end user comparison, not a kernel-level one. For the older Qwen3 models, where
-Terrazzo's prefix cache works, Terrazzo wins the 16-session agent case; that result does
-not transfer to these new cache architectures yet. Raw data:
+| model | decode T / O | 16s tok/s T / O | TTFT p50 T / O | p95 completion T / O | generated tokens T / O |
+|---|---:|---:|---:|---:|---:|
+| Qwen3.5 0.8B | 133.2 / 58.1 | 9.6 / 50.0 | 12.5 / 19.3 s | 42.8 / 20.9 s | 498 / 2044 |
+| Qwen3.5 2B | 102.1 / 57.0 | 16.7 / 24.2 | 28.8 / 39.8 s | 89.6 / 41.6 s | 2048 / 2048 |
+| Qwen3.5 4B | 46.7 / 25.8 | 6.7 / 9.4 | 73.6 / 88.2 s | 224.7 / 94.0 s | 2048 / 1752 |
+| Gemma 4 E2B | 77.2 / 32.8 | 18.5 / 20.5 | 14.3 / 7.1 s | 52.1 / 90.3 s | 1216 / 1994 |
+
+Qwen3.5 requests start earlier on Terrazzo but finish later; Gemma 4 finishes earlier on
+Terrazzo. The p95 numbers and token counts show why TTFT alone is misleading. Ollama used
+16 parallel contexts and 8k context; other quantizations are Q4_K_M vs MLX 4bit. No quality
+evaluation was run, so there is no "best model" conclusion. Raw data:
 [bench/model_vs_ollama_results.json](bench/model_vs_ollama_results.json).
 
 ### Long system prompts: pre-registration is the differentiator

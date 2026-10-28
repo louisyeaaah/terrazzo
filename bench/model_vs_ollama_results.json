@@ -1,6 +1,6 @@
 {
  "timestamp": "2026-10-28T22:50:34+1100",
- "note": "Terrazzo raw no-prefix-cache (MLX 4bit) vs Ollama 0.34.4; Ollama quant per model below",
+ "note": "Terrazzo raw no-prefix-cache (MLX 4bit) vs Ollama 0.34.4; Ollama quant per model below; p95 completion/token counts added; aggregate tok/s is not like-for-like",
  "ollama": {
   "version": "0.34.4",
   "num_parallel": 16,
@@ -77,7 +77,11 @@
    "terrazzo_tok_s": 9.6,
    "ollama_tok_s": 50.0,
    "terrazzo_ttft_p50": 12.5,
-   "ollama_ttft_p50": 19.29
+   "ollama_ttft_p50": 19.29,
+   "terrazzo_p95_completion": 42.8,
+   "ollama_p95_completion": 20.9,
+   "terrazzo_tokens": 498,
+   "ollama_tokens": 2044
   },
   {
    "model": "Qwen3.5 2B",
@@ -85,7 +89,11 @@
    "terrazzo_tok_s": 16.7,
    "ollama_tok_s": 24.2,
    "terrazzo_ttft_p50": 28.75,
-   "ollama_ttft_p50": 39.83
+   "ollama_ttft_p50": 39.83,
+   "terrazzo_p95_completion": 89.6,
+   "ollama_p95_completion": 41.6,
+   "terrazzo_tokens": 2048,
+   "ollama_tokens": 2048
   },
   {
    "model": "Qwen3.5 4B",
@@ -93,7 +101,11 @@
    "terrazzo_tok_s": 6.7,
    "ollama_tok_s": 9.4,
    "terrazzo_ttft_p50": 73.59,
-   "ollama_ttft_p50": 88.22
+   "ollama_ttft_p50": 88.22,
+   "terrazzo_p95_completion": 224.7,
+   "ollama_p95_completion": 94.0,
+   "terrazzo_tokens": 2048,
+   "ollama_tokens": 1752
   },
   {
    "model": "Gemma 4 E2B",
@@ -101,7 +113,11 @@
    "terrazzo_tok_s": 18.5,
    "ollama_tok_s": 20.5,
    "terrazzo_ttft_p50": 14.35,
-   "ollama_ttft_p50": 7.14
+   "ollama_ttft_p50": 7.14,
+   "terrazzo_p95_completion": 52.1,
+   "ollama_p95_completion": 90.3,
+   "terrazzo_tokens": 1216,
+   "ollama_tokens": 1994
   }
  ],
  "environment": {

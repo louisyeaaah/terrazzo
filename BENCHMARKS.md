@@ -2261,15 +2261,28 @@ qwen3.5:0.8b 是 Q8_0，其余 q4_K_M；Terrazzo 全部 MLX 4bit。不是严格 
 | Qwen3.5 4B | 6.7 | **9.4** | **73.6 s** | 88.2 s |
 | Gemma 4 E2B | 18.5 | **20.5** | 14.3 s | **7.1 s** |
 
-### 55.3 结论（诚实版）
+### 55.3 完成时间、实际 token 数与归因边界
 
-- 单流 decode：Terrazzo 的 MLX 路径明显更快（1.8–2.35×）。
-- 16 会话 agent：这批新模型上 Ollama 整体吞吐更高。主要原因是 Terrazzo 的前缀缓存
-  目前不支持 Qwen3.5 ArraysCache / Gemma 4 sliding cache，只能无缓存跑；Ollama 自动复用
-  prompt 状态并用自己的并行调度。
-- TTFT 并非一边倒：Qwen3.5 三个尺寸 Terrazzo 更低，Gemma 4 Ollama 更低。
-- 这组数据不能用来宣称“Terrazzo 在 2026 小模型上全面胜过 Ollama”；只能说明单流
-  decode 有优势，而共享长提示的 agent 场景仍受 cache 兼容性限制。
-- 老 Qwen3 系列（前缀缓存可工作）此前 16 会话 Terrazzo 领先；不要把那个结果外推到新架构。
+前面只列了 TTFT；补上 p95 完成时间和实际生成 token 后，结论要收紧：
 
-原始数据：`bench/model_vs_ollama_results.json`。
+| 模型 | TTFT p50 T/O | 完成 p95 T/O | 生成 tokens T/O |
+|---|---:|---:|---:|
+| Qwen3.5 0.8B | 12.5 / 19.3 s | 42.8 / 20.9 s | 498 / 2044 |
+| Qwen3.5 2B | 28.8 / 39.8 s | 89.6 / 41.6 s | 2048 / 2048 |
+| Qwen3.5 4B | 73.6 / 88.2 s | 224.7 / 94.0 s | 2048 / 1752 |
+| Gemma 4 E2B | 14.3 / 7.1 s | 52.1 / 90.3 s | 1216 / 1994 |
+
+- Qwen3.5 是“Terrazzo 更早开始、更晚完成”；Gemma 4 E2B 则 Terrazzo 完成更早。
+  只看 TTFT 会得出相反印象。
+- 实际生成 token 数不同（Terrazzo 0.8B 只有 498，Gemma 1216；Ollama 接近 2044），
+  **aggregate tok/s 不是同 token 量对比**。原因可能是 EOS/模板/停止条件不同，尚未隔离。
+- “Ollama 总吞吐更高”是本次配置下的事实；“主要因为 cache 兼容性”目前只是**合理假设**。
+  已知的是 Terrazzo 用不了前缀快照；未证明 Ollama 实际命中多少、cache/调度/量化/计算
+  各贡献多少。需要缓存命中与实际 prefill 计数，或补齐支持后的同配置对照。
+- Decode 数字不含排队、prefill 和首 token 等待，不能当作端到端更快；0.8B 还是
+  MLX 4bit 对 Ollama Q8_0，不能把 2.29× 归因于引擎。
+- 没有质量评测，因此不给出“综合最好模型”推荐；只能说 Gemma 4 E2B 在这组 2k/16 会话
+  测试里总吞吐最高，而 Qwen3.5 0.8B 的 TTFT p50 和峰值内存更低。
+
+下一轮优先级：先查清 Qwen3.5 ArraysCache 和 Gemma 4 sliding-window cache 能否安全快照、
+恢复和隔离，并记录缓存命中/实际 prefill；再谈自动并发。

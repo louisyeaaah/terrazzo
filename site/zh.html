@@ -261,10 +261,11 @@
         </table>
       </div>
       <p class="callout" style="margin-top:14px">
-        <b>T=Terrazzo，O=Ollama 0.34.4</b>（16 并行、8k context）。单流 decode：
-        Terrazzo 快 1.8–2.35×。16 会话时 Ollama 在这批新模型上领先，原因是 Terrazzo
-        目前无法为 Qwen3.5/Gemma 4 的 cache 做前缀快照。这是原始模型速度，不是能力评测；
-        Qwen3.5 4B 偏慢是真实 MLX 路径结果。完整表格：
+        <b>T=Terrazzo，O=Ollama 0.34.4</b>（16 并行、8k context）。Terrazzo 的单流
+        <em>decode-only</em> 数在本配置更快，但不含排队、prefill 和首 token 等待。16 会话时
+        Ollama 在这批模型上总吞吐更高。Terrazzo 目前无法为 Qwen3.5/Gemma 4 的 cache 做
+        前缀快照；这对差距的贡献比例<b>尚未隔离</b>。两组实际生成 token 数也不同，所以
+        aggregate tok/s 不能直接横比。没有质量评测，不给“综合最好模型”结论。完整表格：
         <a href="https://github.com/louisyeaaah/terrazzo/blob/main/BENCHMARKS.md">BENCHMARKS §54–55</a>。
       </p>
     </div>
