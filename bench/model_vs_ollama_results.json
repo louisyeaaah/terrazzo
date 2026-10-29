@@ -1,6 +1,6 @@
 {
  "timestamp": "2026-10-28T22:50:34+1100",
- "note": "quiet retest 2026-10-29; Terrazzo matrix run baseline loadavg 1.9, Ollama run loadavg 4.1-4.7; p95 completion from per-request rows; Gemma token counts differ",
+ "note": "lower-background-load retest 2026-10-29; Terrazzo matrix run baseline loadavg 1.9, Ollama run loadavg 4.1-4.7; p95 completion from per-request rows; Gemma token counts differ",
  "ollama": {
   "version": "0.34.4",
   "num_parallel": 16,

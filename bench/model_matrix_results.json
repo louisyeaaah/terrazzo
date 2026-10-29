@@ -19,7 +19,7 @@
  "results": [
   {
    "name": "qwen3.5-0.8b",
-   "label": "Qwen3.5 0.8B · 4bit",
+   "label": "Qwen3.5 0.8B \u00b7 4bit",
    "repo": "mlx-community/Qwen3.5-0.8B-4bit",
    "model_path": "/Users/yezhipeng/project/dsh-other/terrazzo/.hf-models/qwen3.5-0.8b",
    "size_gb": 0.65,
@@ -49,7 +49,7 @@
   },
   {
    "name": "qwen3.5-2b",
-   "label": "Qwen3.5 2B · 4bit",
+   "label": "Qwen3.5 2B \u00b7 4bit",
    "repo": "mlx-community/Qwen3.5-2B-4bit",
    "model_path": "/Users/yezhipeng/project/dsh-other/terrazzo/.hf-models/qwen3.5-2b",
    "size_gb": 1.75,
@@ -79,7 +79,7 @@
   },
   {
    "name": "qwen3.5-4b",
-   "label": "Qwen3.5 4B · 4bit",
+   "label": "Qwen3.5 4B \u00b7 4bit",
    "repo": "mlx-community/Qwen3.5-4B-4bit",
    "model_path": "/Users/yezhipeng/project/dsh-other/terrazzo/.hf-models/qwen3.5-4b",
    "size_gb": 3.06,
@@ -109,7 +109,7 @@
   },
   {
    "name": "gemma4-e2b",
-   "label": "Gemma 4 E2B · 4bit",
+   "label": "Gemma 4 E2B \u00b7 4bit",
    "repo": "mlx-community/gemma-4-e2b-it-4bit",
    "model_path": "/Users/yezhipeng/project/dsh-other/terrazzo/.hf-models/gemma4-e2b",
    "size_gb": 3.58,
@@ -137,5 +137,6 @@
    "startup_s": 5.35,
    "prewarm_s": 0.0
   }
- ]
+ ],
+ "note": "lower-background-load retest, not fully idle; performance positioning closed; see BENCHMARKS sections 54-57"
 }

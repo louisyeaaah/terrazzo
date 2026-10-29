@@ -2189,50 +2189,14 @@ completion_batch_size=16、ADMIT_BATCH=16、ADMIT_WAIT=4；不再用“4 槽 + 4
 | abort 底层删除失败仍返回成功 | `MLXRunner.remove` 只在 `bg.remove` 成功后清 uid 映射；`Engine.abort` 删除失败进入 `handle_failure`/reset 并返回 False，reset 失败置 `_executor_broken`；补三条故障路径测试 |
 | paged/pool stats 修复实际漏提交 | `BaseRuntime.auto_cap/_auto_inputs` 默认值已提交；新增两个模式 stats 测试 |
 
-## 54. 2026 小模型矩阵（安静机器复测，2026-10-29）
+## 54. 2026 小模型：较低背景负载复测（2026-10-29）
 
-同一 Terrazzo 配置、2k 共享提示、无前缀缓存、与 Ollama 相同的中文 user prompt。
-Terrazzo 运行启动时 loadavg 1.9；Ollama 运行 loadavg 4.1–4.7。单次运行，绝对数字仍受
-机器状态影响，但比上一轮安静。**498 token 异常已定位为 prompt 不一致，不是 early stop。**
+**口径：** 不是“完全空闲”复测。Terrazzo 启动时 loadavg 1.9；Ollama 那一轮 loadavg
+4.1–4.7；两轮背景负载没有完全一致。数字只作方向性参考，不能推算完全空闲时的差距。
+Terrazzo raw：2k 共享提示、无前缀缓存、与 Ollama 相同的中文 user prompt、16 会话、
+2 turns × 64。单次运行，没有质量评测。
 
-### 54.1 Terrazzo raw（16 会话）
-
-| 模型 | 权重 | tok/s | TTFT p50 | 请求完成 p95 | 生成 tokens | 峰值 |
-|---|---:|---:|---:|---:|---:|---:|
-| Qwen3.5 0.8B | 0.65 GB | 66.5 | 6.8 s | 22.3 s | 2048 | 4.6 GB |
-| Qwen3.5 2B | 1.75 GB | 30.7 | 15.4 s | 48.5 s | 2048 | 5.3 GB |
-| Qwen3.5 4B | 3.06 GB | 10.9 | 40.8 s | 124.2 s | 1902 | 9.6 GB |
-| Gemma 4 E2B | 3.58 GB | 27.4 | 10.6 s | 28.5 s | 1136 | 5.3 GB |
-
-`请求完成 p95` 是单请求完成延迟，不是整批 wall time。Gemma 4 的 1136 vs Ollama 1994
-仍不可比（它返回“请提供内容”并 stop）。没有质量评测。
-
-### 54.2 单请求诊断（中文 prompt，max_tokens=64）
-
-| 模型 | Terrazzo | Ollama |
-|---|---|---|
-| Qwen3.5 0.8B | finish=length, 64 tokens | done=length, 64 tokens |
-| Gemma 4 E2B | finish=stop, 31 tokens，要求提供内容 | done=length, 64 tokens，直接总结 |
-
-Gemma 的模板/停止行为仍需继续查；Qwen 4B 的 1902 vs 1752 也还不完全一致。
-
-## 55. 2026 小模型 vs Ollama（安静复测）
-
-Ollama 0.34.4：16 并行、8k context。Qwen3.5 0.8B 在 Ollama 是 Q8_0，其余 Q4_K_M；
-Terrazzo 全部 MLX 4bit。
-
-### 55.1 单流 decode（短提示，128 tokens）
-
-| 模型 | Terrazzo | Ollama | 倍数 |
-|---|---:|---:|---:|
-| Qwen3.5 0.8B | 133.2 | 58.1 | 2.29× |
-| Qwen3.5 2B | 102.1 | 57.0 | 1.79× |
-| Qwen3.5 4B | 46.7 | 25.8 | 1.81× |
-| Gemma 4 E2B | 77.2 | 32.8 | 2.35× |
-
-decode-only，不含排队/prefill/首 token；0.8B 有量化差异，不能归因于引擎。
-
-### 55.2 16 会话，2k 共享提示
+### 54.1 16 会话结果
 
 | 模型 | T tok/s | O tok/s | T TTFT | O TTFT | T 完成 p95 | O 完成 p95 | T tokens | O tokens |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -2241,15 +2205,62 @@ decode-only，不含排队/prefill/首 token；0.8B 有量化差异，不能归�
 | Qwen3.5 4B | 10.9 | **17.0** | **40.8 s** | 49.3 s | 124.2 s | **51.2 s** | 1902 | 1752 |
 | Gemma 4 E2B | 27.4 | **34.1** | 10.6 s | **4.3 s** | **28.5 s** | 53.3 s | 1136 | 1994 |
 
-- Qwen3.5 0.8B/2B：token 量对齐；Terrazzo 更早开始，但单请求完成 p95 更高；Ollama 总吞吐更高。
-- Qwen3.5 4B：生成量接近，Terrazzo 更慢。
-- Gemma 4：生成量不一致，不能做同任务吞吐结论；TTFT/完成 p95 也不可比。
-- **归因边界：** Terrazzo 目前不能给 Qwen3.5/Gemma 4 做前缀快照；Ollama 是否命中及
-  cache/调度/量化/compute 的贡献尚未隔离。
+`请求完成 p95` 是单请求完成延迟，不是整批 wall time；整批看 wall time 或最后完成时刻。
+Qwen3.5 0.8B/2B 的 token 量已对齐，可作 aggregate 比较；Qwen3.5 4B 接近；Gemma 4 仍
+不可比。Token 总量接近也**不代表每轮输入一致**：第二轮输入包含第一轮回答，首轮输出
+长度不同会改变第二轮输入；当前 raw JSON 未保存逐请求输入 tokens，下一轮必须补。
 
-### 55.3 下一步协议
+## 55. 生成行为诊断（Gemma 4 / Qwen3.5 4B）
 
-1. 自然 EOS：记录 input/output tokens、finish_reason、stop 配置、渲染模板、输出样本；
-   解释 Gemma 1136 vs 1994（以及 Qwen 4B 1902 vs1752）。
-2. 固定输出长度：双方都可靠支持后再测计算吞吐，不与自然 EOS 混成胜负。
-3. cache 兼容性：先验证恢复后输出正确、分支不串状态、原始快照不被修改，再测收益。
+单请求，同一 system+user，max_tokens=64，thinking 关闭。诊断数据：
+`bench/generation_behavior_diag.json`。
+
+### 55.1 模板与输入
+
+| 项目 | Gemma 4 E2B | Qwen3.5 4B |
+|---|---|---|
+| Terrazzo 渲染 | `<bos><|turn>system ... <|turn>model` | `<|im_start|>system ... <|im_start|>assistant
+<think></think>` |
+| Ollama | Modelfile `TEMPLATE {{ .Prompt }}` + `RENDERER gemma4` | 同左 + `RENDERER qwen3.5` |
+| 双方 prompt tokens | 2618 / 2618 | 2456 / 2456 |
+| thinking | off | off（仍渲染空 think 块） |
+
+### 55.2 停止行为
+
+| 模型 | Terrazzo | Ollama @64 | Ollama @256 |
+|---|---|---|---|
+| Qwen3.5 4B | finish=length, 64 tokens | done=length, 64 | （未额外测） |
+| Gemma 4 E2B | finish=stop, 31 tokens，完整澄清请求 | done=length, 64，**截断** | done=stop, 137，自然结束 |
+
+Gemma 4 的 64-token 输出并不是“完成了更多工作”，而是**被 num_predict 截断**；放大上限
+后它到 137 tokens 才自然停止。Terrazzo 在 31 tokens 自然停止。两边回答内容不同，不能
+把它当作同任务吞吐/完成速度对比。并发 4 请求时模式相同（T 全 stop@31，O 全 length@64）。
+
+### 55.3 关于 498 token
+
+旧矩阵的 498 是 **harness 提示词不一致**（Terrazzo 英文 prompt vs Ollama 中文 prompt）
+引起；这排除了“执行器异常”的归因，但**不排除**停止行为差异——提示词差异与提前 EOS
+并不互斥，具体停止机制要看模板/停止日志。Gemma 的 1136 vs 1994 已确认是截断/回答
+内容差异，不是同一任务完成得更快。
+
+## 56. 失效记录与追溯
+
+首页模型性能表已撤下；以下旧结果保留在实验记录中，避免误用：
+
+| 提交/结果 | 状态与原因 |
+|---|---|
+| `52c0ee7` 初始 2026 模型矩阵（9.6/16.7/6.7/18.5 tok/s；498/1216 tokens） | **失效**：Terrazzo 英文 prompt vs Ollama 中文 prompt，不能跨后端比较；仅作历史追溯 |
+| `1e35b2d` prompt 对齐版（35.8/16.6/3.4/4.3 tok/s） | **被取代**：当时背景负载 4.9–6.3，数值整体偏低；保留用于说明负载敏感性 |
+| `66092de` 较低背景负载复测 | **当前方向性数据**：不是完全空闲；见 §54 |
+| 旧 1/4 会话矩阵、English-prompt 短提示矩阵 | **删除**：口径不一致，不能与当前 16 会话表混用 |
+
+追溯入口：`git show 52c0ee7:bench/model_matrix_results.json` 和
+`git show 66092de:bench/model_matrix_results.json`。
+
+## 57. 下一步协议
+
+1. **自然 EOS**：记录每请求 input/output tokens、finish_reason、stop 配置、渲染模板和
+   输出样本；重点解释 Gemma 1136 vs 1994、Qwen 4B 1902 vs 1752。
+2. **固定输出长度**：双方都可靠支持后再测计算吞吐；不支持就明确保留自然停止测试，
+   不包装成纯计算对比。
+3. **Cache 兼容性**：先验证恢复后输出正确、分支不串状态、原始快照不被修改，再测收益。

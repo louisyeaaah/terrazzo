@@ -76,48 +76,37 @@ vLLM's single-stream number is the second (steady-state) run: the first run afte
 startup is 15.1 tok/s / 2.95 s because of kernel warm-up. Its 4/16-session rows are
 steady state as well.
 
-### Model matrix: 2026 small models (16 sessions, quiet retest)
+### 2026 models: generation behavior, not a leaderboard
 
-Same Terrazzo process, same 2k shared system prompt, no prefix cache, and the same Chinese
-user prompts as the Ollama comparison. This is a quiet-machine retest (Terrazzo run started
-at loadavg 1.9). No quality evaluation.
+Performance positioning is closed. Detailed numbers, invalidation reasons and old commit
+references live in [BENCHMARKS §54–57](BENCHMARKS.md); the homepage no longer carries the
+old matrix. What matters now is that **equal token totals do not prove equal task work**.
 
-| model | weights | 16-session tok/s | TTFT p50 | request completion p95 | generated tokens | peak MLX |
-|---|---:|---:|---:|---:|---:|---:|
-| Qwen3.5 0.8B · 4bit | 0.65 GB | **66.5** | 6.8 s | 22.3 s | 2048 | 4.6 GB |
-| Qwen3.5 2B · 4bit | 1.75 GB | 30.7 | 15.4 s | 48.5 s | 2048 | 5.3 GB |
-| Qwen3.5 4B · 4bit | 3.06 GB | 10.9 | 40.8 s | 124.2 s | 1902 | 9.6 GB |
-| Gemma 4 E2B · 4bit | 3.58 GB | 27.4 | 10.6 s | 28.5 s | 1136 | 5.3 GB |
+- Qwen3.5 0.8B/2B: at a 64-token cap both sides hit the cap and generate ~2048 tokens per
+  16×2 workload, so those aggregate numbers are comparable. In the lower-background-load
+  retest Ollama had higher aggregate throughput; Terrazzo had lower TTFT p50 but higher
+  per-request completion p95. The two runs were not at identical background load; treat
+  this as directional, not "fully idle" numbers.
+- Qwen3.5 4B: both hit the 64-token cap; 1902 vs 1752 tokens. Terrazzo was slower, and the
+  task is still not exactly matched.
+- Gemma 4 E2B: same rendered prompt length (2618 tokens), but Terrazzo stops at 31 tokens
+  with a complete clarification request, while Ollama's 64-token answer is truncated
+  (with `num_predict=256` it continues to 137 and stops). 1136 vs 1994 is therefore a
+  stop/truncation difference, **not** evidence that Terrazzo completed the same task faster.
+- Templates/thinking: Terrazzo uses the model tokenizer chat template; Ollama uses
+  `RENDERER gemma4` / `RENDERER qwen3.5` (Modelfile `TEMPLATE {{ .Prompt }}`). Thinking is
+  off on both; Qwen still renders an empty `<think></think>` block.
+- Second-turn caveat: the second-turn input includes the first-turn answer. Different
+  first-turn output lengths change the second-turn input; the current raw JSON does not
+  store per-request input tokens yet, so this must be logged next.
+- Prefix cache remains unsupported for Qwen3.5 ArraysCache / Gemma 4 sliding caches. How
+  much it contributes to performance differences is **not isolated**.
 
-`request completion p95` is per-request completion latency, not batch wall time. Gemma 4's
-1136 tokens vs Ollama's 1994 remains unresolved (it returns a clarification request). The
-earlier 498-token anomaly was caused by a **prompt mismatch** in the harness, not early
-stop. Historical models are intentionally excluded.
-
-### vs Ollama (same 2026 models, same prompts)
-
-**Decode-only** (short prompt, 128 tokens): Terrazzo's MLX path is 1.8–2.35× faster in this
-configuration. This is not end-to-end; Qwen3.5 0.8B is MLX 4bit vs Ollama Q8_0, so 2.29×
-cannot be attributed to the engine alone.
-
-After prompt alignment, Qwen3.5 0.8B/2B generate the same amount of work (2048 vs
-2044/2048), so aggregate comparisons are meaningful. Qwen3.5 4B is close (1902 vs 1752).
-Gemma 4 E2B is **not task-equivalent** (1136 vs 1994) and is not used for a throughput
-winner claim.
-
-| model | decode T / O | 16s tok/s T / O | TTFT p50 T / O | completion p95 T / O | tokens T / O |
-|---|---:|---:|---:|---:|---:|
-| Qwen3.5 0.8B | 133.2 / 58.1 | 66.5 / **83.2** | **6.8** / 11.4 s | 22.3 / **12.0** s | 2048 / 2044 |
-| Qwen3.5 2B | 102.1 / 57.0 | 30.7 / **43.8** | **15.4** / 21.6 s | 48.5 / **23.6** s | 2048 / 2048 |
-| Qwen3.5 4B | 46.7 / 25.8 | 10.9 / **17.0** | **40.8** / 49.3 s | 124.2 / **51.2** s | 1902 / 1752 |
-| Gemma 4 E2B | 77.2 / 32.8 | 27.4 / **34.1** | 10.6 / **4.3** s | 28.5 / **53.3** s | 1136 / 1994 |
-
-Qwen3.5 0.8B/2B: Terrazzo starts earlier but has **higher per-request completion p95**;
-Ollama has higher aggregate throughput. Qwen3.5 4B is slower on Terrazzo. Gemma 4's token
-mismatch prevents a task-equivalent claim. Known limitation: Terrazzo cannot snapshot
-Qwen3.5 ArraysCache / Gemma 4 sliding caches; cache vs scheduling/quantization/compute
-contributions are **not isolated**. Raw data:
-[bench/model_vs_ollama_results.json](bench/model_vs_ollama_results.json).
+An earlier 498-token result came from a harness prompt mismatch; that rules out the old
+"executor anomaly" attribution, but it does **not** rule out a stop-behavior difference —
+see the generation log in BENCHMARKS §55.3. Decode-only numbers (short prompt) are kept in
+the experiment log only; they exclude queueing, prefill and first-token wait and are not
+end-to-end claims.
 
 ### Long system prompts: pre-registration is the differentiator
 

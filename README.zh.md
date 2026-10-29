@@ -71,41 +71,31 @@ token 数全部来自服务端计数（OpenAI 风格用 `usage`，Ollama 原生�
 vLLM 单会话取第二次（稳态）运行；首次运行包含 kernel 热身（15.1 tok/s / 2.95 s）。
 4/16 会话均为稳态。
 
-### 模型矩阵：2026 年小模型（16 会话，安静机器复测）
+### 2026 模型：先看生成行为，不做排行榜
 
-同一个 Terrazzo 进程、2k 共享提示、关闭前缀缓存，并使用与 Ollama 对比相同的中文 prompt。
-安静复测：Terrazzo 启动时 loadavg 1.9；没有质量评测。
+性能定位到此结项。详细数字、失效原因和旧提交引用都在
+[BENCHMARKS §54–57](BENCHMARKS.md)；首页不再保留旧矩阵。现在更重要的事实是：
+**token 总数相同，不等于任务工作量相同。**
 
-| 模型 | 权重 | 16 会话 tok/s | TTFT p50 | 请求完成 p95 | 生成 tokens | 峰值 |
-|---|---:|---:|---:|---:|---:|---:|
-| Qwen3.5 0.8B · 4bit | 0.65 GB | **66.5** | 6.8 s | 22.3 s | 2048 | 4.6 GB |
-| Qwen3.5 2B · 4bit | 1.75 GB | 30.7 | 15.4 s | 48.5 s | 2048 | 5.3 GB |
-| Qwen3.5 4B · 4bit | 3.06 GB | 10.9 | 40.8 s | 124.2 s | 1902 | 9.6 GB |
-| Gemma 4 E2B · 4bit | 3.58 GB | 27.4 | 10.6 s | 28.5 s | 1136 | 5.3 GB |
+- Qwen3.5 0.8B/2B：64-token 上限下双方都撞到上限，16×2 工作负载都约 2048 tokens，
+  这组 aggregate 有可比性。较低背景负载复测中 Ollama 总吞吐更高；Terrazzo TTFT p50
+  更低，但单请求完成 p95 更高。两轮背景负载并不完全一致，只能当方向性结论。
+- Qwen3.5 4B：双方都撞 64 上限，1902 vs 1752；Terrazzo 更慢，任务仍未完全对齐。
+- Gemma 4 E2B：渲染后 prompt 长度相同（2618 tokens），但 Terrazzo 在 31 tokens 时
+  以完整澄清请求自然停止；Ollama 的 64-token 回答是截断（`num_predict=256` 时会继续到
+  137 tokens 再停止）。所以 1136 vs 1994 是停止/截断差异，**不能**说 Terrazzo 更快完成
+  同一任务。
+- 模板/thinking：Terrazzo 用模型 tokenizer 的 chat template；Ollama 用
+  `RENDERER gemma4` / `RENDERER qwen3.5`（Modelfile `TEMPLATE {{ .Prompt }}`）。两边都
+  关闭 thinking；Qwen 仍渲染空的 `<think></think>` 块。
+- 第二轮输入包含第一轮回答；首轮输出长度不同会改变第二轮输入。当前 raw JSON 还没存
+  逐请求输入 token，下一轮要补。
+- Qwen3.5 ArraysCache / Gemma 4 sliding cache 仍不支持前缀快照；它对性能差距的贡献
+  **尚未隔离**。
 
-`请求完成 p95` 是单请求完成延迟，不是整批 wall time。Gemma 4 的 1136 vs Ollama 1994
-仍未解决（它返回要求补充内容）。之前的 498 token 异常已定位为 **prompt 不一致**，
-不是 early stop。历史模型不参测。
-
-### 与 Ollama 对比（同模型、同 prompt）
-
-**仅 decode**（短提示、128 token）：本配置下 Terrazzo MLX 路径快 1.8–2.35×，但不含排队、
-prefill、首 token 等待；Qwen3.5 0.8B 还是 MLX 4bit 对 Ollama Q8_0，不能归因于引擎。
-
-prompt 对齐后，Qwen3.5 0.8B/2B 生成量相同（2048 vs 2044/2048），aggregate 有意义；
-Qwen3.5 4B 接近（1902 vs 1752）；Gemma 4 **不可比**（1136 vs 1994），不用于吞吐胜负。
-
-| 模型 | decode T/O | 16 会话 tok/s T/O | TTFT p50 T/O | 完成 p95 T/O | tokens T/O |
-|---|---:|---:|---:|---:|---:|
-| Qwen3.5 0.8B | 133.2 / 58.1 | 66.5 / **83.2** | **6.8** / 11.4 s | 22.3 / **12.0** s | 2048 / 2044 |
-| Qwen3.5 2B | 102.1 / 57.0 | 30.7 / **43.8** | **15.4** / 21.6 s | 48.5 / **23.6** s | 2048 / 2048 |
-| Qwen3.5 4B | 46.7 / 25.8 | 10.9 / **17.0** | **40.8** / 49.3 s | 124.2 / **51.2** s | 1902 / 1752 |
-| Gemma 4 E2B | 77.2 / 32.8 | 27.4 / **34.1** | 10.6 / **4.3** s | 28.5 / **53.3** s | 1136 / 1994 |
-
-Qwen3.5 0.8B/2B：Terrazzo 更早开始，但单请求完成 p95 更高；Ollama 总吞吐更高。
-Qwen3.5 4B Terrazzo 更慢。Gemma 4 token 量不一致，不能做同任务结论。已知 Terrazzo
-无法为 Qwen3.5/Gemma 4 做前缀快照；cache、调度、量化、计算各贡献多少尚未隔离。
-原始数据：[bench/model_vs_ollama_results.json](bench/model_vs_ollama_results.json)。
+早期的 498-token 结果来自 harness 提示词不一致；这排除了旧的“执行器异常”归因，但**不排除**
+停止行为差异——见 BENCHMARKS §55.3 的生成日志。Decode-only（短提示）只留在实验记录里；
+它不含排队、prefill 和首 token 等待，不是端到端结论。
 
 ### 长系统提示：预注册是差异点
 

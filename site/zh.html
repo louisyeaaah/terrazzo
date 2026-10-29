@@ -241,33 +241,40 @@
   <section id="models" aria-labelledby="models-title">
     <div class="wrap">
       <div class="section-head">
-        <h2 id="models-title">2026 小模型 vs Ollama</h2>
-        <span class="note">安静复测 · 原始服务速度 · 无前缀缓存 · 16 会话</span>
+        <h2 id="models-title">2026 模型：先看生成行为</h2>
+        <span class="note">不做排行榜 · 性能定位已结项</span>
       </div>
       <p class="section-sub">
-        同一台机器、同一个服务配置；只测 2026 年的新一代小模型，不包含历史模型。
-        Qwen3.5（ArraysCache）和 Gemma 4（sliding-window cache）暂时不能被 dense-KV
-        前缀缓存快照，因此本组关闭前缀缓存。
+        旧的性能矩阵已从首页撤下；完整数字、失效原因和旧提交引用在实验记录里。
+        token 总数相同，不等于任务工作量相同。
       </p>
-      <div class="table-wrap">
-        <table aria-label="2026 小模型矩阵">
-          <thead><tr><th>模型</th><th>权重</th><th>T 2k · 16</th><th>O 2k · 16</th><th>T TTFT</th><th>O TTFT</th><th>tokens T/O</th></tr></thead>
-          <tbody>
-            <tr><td>Qwen3.5 0.8B · 4bit</td><td>0.65 GB</td><td>66.5 tok/s</td><td>83.2</td><td>6.8 s</td><td>11.4 s</td><td>2048 / 2044</td></tr>
-            <tr><td>Qwen3.5 2B · 4bit</td><td>1.75 GB</td><td>30.7 tok/s</td><td>43.8</td><td>15.4 s</td><td>21.6 s</td><td>2048 / 2048</td></tr>
-            <tr><td>Qwen3.5 4B · 4bit</td><td>3.06 GB</td><td>10.9 tok/s</td><td>17.0</td><td>40.8 s</td><td>49.3 s</td><td>1902 / 1752</td></tr>
-            <tr><td><b>Gemma 4 E2B · 4bit</b></td><td>3.58 GB</td><td>27.4 tok/s</td><td>34.1</td><td>10.6 s</td><td>4.3 s</td><td>1136 / 1994</td></tr>
-          </tbody>
-        </table>
+      <div class="grid-2">
+        <div class="card">
+          <span class="tag">已知</span>
+          <h3>Qwen3.5 0.8B / 2B / 4B</h3>
+          <p>
+            64-token 上限下三档都撞到上限。较低背景负载复测中，Qwen3.5 0.8B/2B 的 token
+            量可比（2048 vs 2044/2048）。Ollama 总吞吐更高；Terrazzo TTFT p50 更低，但
+            单请求完成 p95 更高。两轮背景负载不完全一致，只能当方向性结论，不能推算
+            完全空闲时的差距。
+          </p>
+        </div>
+        <div class="card lose">
+          <span class="tag">不可比</span>
+          <h3>Gemma 4 E2B</h3>
+          <p>
+            渲染后 prompt 长度相同（2618 tokens），但 Terrazzo 在 31 tokens 时以完整澄清
+            请求自然停止；Ollama 的 64-token 回答是截断（<span class="mono">num_predict=256</span>
+            时会继续到 137 tokens 再停）。1136 vs 1994 是停止/截断差异，不能证明 Terrazzo
+            更快完成同一任务。
+          </p>
+        </div>
       </div>
       <p class="callout" style="margin-top:14px">
-        <b>T=Terrazzo，O=Ollama 0.34.4</b>（16 并行、8k context）。安静复测：
-        Terrazzo 启动时 loadavg 1.9，Ollama 4.1–4.7。测试 harness 曾用不同用户 prompt；
-        Terrazzo 之前的 498-token <b>不是</b> early stop。对齐后 Qwen3.5 0.8B/2B 生成量
-        可比；Gemma 4 仍不一致（1136 vs 1994），不能做同任务对比。Terrazzo 的
-        <em>decode-only</em> 更快，但不是端到端。16 会话时 Ollama 总吞吐更高；前缀缓存
-        兼容性对差距的贡献<b>尚未隔离</b>。没有质量评测，不给“综合最好模型”结论。
-        完整数据：<a href="https://github.com/louisyeaaah/terrazzo/blob/main/BENCHMARKS.md">BENCHMARKS §54–55</a>。
+        Terrazzo 用 tokenizer chat template；Ollama 用 <span class="mono">RENDERER
+        gemma4/qwen3.5</span>。两边都关闭 thinking。Qwen3.5 ArraysCache / Gemma 4
+        sliding cache 仍不能被 Terrazzo 前缀缓存快照；贡献比例尚未隔离。完整表格与失效
+        记录：<a href="https://github.com/louisyeaaah/terrazzo/blob/main/BENCHMARKS.md">BENCHMARKS §54–57</a>。
       </p>
     </div>
   </section>
