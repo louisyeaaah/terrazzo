@@ -2282,9 +2282,8 @@ cache 路径 `--profile agent --prefix-reuse always` + `/v1/prewarm`，对照路
 | 多轮 B | 两轮均逐字一致 |
 
 多轮 A 的不一致重复 3/3，turn-2 输入 tokens 两边都是 2598，说明不是输入长度差异；
-并发检查也没有显示 A/B 串状态。目前看更像“前缀快照 seed 与重新 prefill 的数值路径不同”
-导致 greedy 输出分叉，而不是逻辑污染。**严格标准下缓存正确性尚未全部通过**；在修复/解释
-这个数值分叉前，不把缓存收益当作已验收。
+并发检查也没有显示 A/B 串状态，但**还不能排除快照长度/恢复位置的逻辑问题**；在按 §61
+的边界检查排除逻辑错误前，不把它称为“数值分叉”，也不把缓存收益当作已验收。
 
 数据/脚本：`bench/cache_correctness_results.json`、`bench/cache_correctness.py`。
 
