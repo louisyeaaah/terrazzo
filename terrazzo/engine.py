@@ -446,18 +446,19 @@ class Engine:
                 hit = self.prefix_cache.peek(seq.prompt_token_ids)
                 if hit is not None:
                     prefix, cached_tokens = hit
-                    # Native snapshots can only be restored on a full prefix.
-                    # A full native hit would make the runner recompute (no
-                    # reliable one-token rollback), so skip the lookup entirely:
-                    # do not count it as a cache hit.
-                    native_full = (prefix.native is not None
-                                   and cached_tokens == prefix.num_tokens)
+                    # Native snapshots can only be restored on a full registered
+                    # prefix hit, and only when the request still has a suffix.
+                    # If the *entire request* is cached (no suffix), the runner
+                    # would have to recompute (no reliable rollback): skip the
+                    # lookup so it is not counted as a cache hit.
+                    native_no_suffix = (prefix.native is not None
+                                        and cached_tokens == seq.prompt_len)
                     native_partial = (prefix.native is not None
                                       and cached_tokens != prefix.num_tokens)
                     decision = self.cost_model.estimate(
                         seq.prompt_len, cached_tokens, prefix.nbytes,
                         policy=self.cfg.prefix_reuse)
-                    if decision.reuse and not native_partial and not native_full:
+                    if decision.reuse and not native_partial and not native_no_suffix:
                         confirmed = self.prefix_cache.lookup(seq.prompt_token_ids)
                         if confirmed is not None:
                             prefix, cached_tokens = confirmed
@@ -475,6 +476,7 @@ class Engine:
                     # shared-prefix reuse failed: retry without it rather than dropping
                     if lookup_happened:
                         self.prefix_cache.undo_hit(prefix)
+                        lookup_happened = False
                     uid = self.runner.insert(seq)
                     seq.cached_prompt_tokens = 0
                     cached_tokens = 0

@@ -77,13 +77,13 @@ vLLM 单会话取第二次（稳态）运行；首次运行包含 kernel 热身�
   `--profile agent` / `--profile mixed`。这是产品路径。
 - **实验性原生快照：**Qwen3.5 / Gemma 4 现在可以 prewarm 并恢复原生 full-prefix cache
   状态（ArraysCache / RotatingKVCache）。修掉 block 边界、full-hit 回退和 BatchKVCache
-  mask 标志问题后，单请求与 4 并发 cached vs no-cache 已逐字一致；多轮集成仍待补，
-  暂不作为生产预设。
+  mask 标志问题后，单请求 cached vs no-cache 已逐字一致且实际复用 2432/2592 tokens；
+  并发 B 分支仍有差异，暂不作为生产预设。
 - 不做“哪个模型综合最快”的结论。生成行为诊断、基准 caveat 和失效记录都在
   [BENCHMARKS §54–64](BENCHMARKS.md)；性能对照不再作为首页主张。
 - **缓存正确性尚未全部通过：**Qwen3-4B 单请求/并发/快照复用/abort 后复用与 no-cache
-  一致，但多轮 A 第 2 轮差一个 token。Qwen3.5/Gemma 4 原生快照单请求和 4 并发已逐字
-  一致，多轮集成仍待补。见 [BENCHMARKS §58–64](BENCHMARKS.md)。修复前不宣称缓存收益。
+  一致，但多轮 A 第 2 轮差一个 token。Qwen3.5/Gemma 4 原生快照单请求已逐字一致且
+  实际复用 >0；并发 B 仍不同。见 [BENCHMARKS §58–64](BENCHMARKS.md)。修复前不宣称缓存收益。
 - Decode-only 不含排队、prefill、首 token 等待，不能读成端到端速度。
 
 ### 长系统提示：预注册是差异点
@@ -254,7 +254,7 @@ BENCHMARKS.md      所有测量数据，包括输掉的那些
 ## 测试与基准
 
 ```bash
-python -m unittest discover -s tests                  # 核心套件（264 个测试，1 skipped）
+python -m unittest discover -s tests                  # 核心套件（267 个测试，1 skipped）
 python -m unittest discover -s experiments/tests -v   # 实验内核（31 个测试）
 python scripts/ci_core_tests.py                       # MLX 被 block 的纯 Python 子集
 bash bench/head_to_head.sh                            # 与 Ollama 的 head-to-head

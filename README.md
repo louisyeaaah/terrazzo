@@ -82,16 +82,16 @@ steady state as well.
   `--profile agent` / `--profile mixed`. This is the production path.
 - **Experimental native snapshot:** Qwen3.5 / Gemma 4 can prewarm and restore native
   full-prefix cache state (ArraysCache / RotatingKVCache). After fixing block-boundary,
-  full-hit rollback and the BatchKVCache mask-flag bug, single-request and 4-way concurrent
-  cache/no-cache outputs are exact; multi-turn integration is still pending, so this is not
-  a production preset yet.
+  full-hit rollback and the BatchKVCache mask-flag bug, single-request cache/no-cache is
+  exact and actually reuses the prefix (2432/2592 tokens); concurrent branch B still differs,
+  so this is not a production preset yet.
 - No "which model is fastest overall" claim. Generation-behavior diagnostics, benchmark
   caveats and invalidated results live in
   [BENCHMARKS §54–64](BENCHMARKS.md); performance comparisons are no longer a homepage claim.
 - **Cache correctness gate is not fully green yet:** Qwen3-4B single-request, concurrent,
   snapshot-reuse and abort-then-reuse match no-cache, but one multi-turn branch differs by
-  one token. Native Qwen3.5/Gemma 4 snapshots are exact for single request and 4-way
-  concurrency after the boundary/mask fixes; multi-turn integration remains open. See
+  one token. Native Qwen3.5/Gemma 4 snapshots are exact for single request with actual
+  reuse >0; one concurrent branch still differs. See
   [BENCHMARKS §58–64](BENCHMARKS.md). Cache gains stay unclaimed until resolved.
 - Decode-only numbers exclude queueing, prefill and first-token wait; do not read them as
   end-to-end speed.
@@ -276,7 +276,7 @@ BENCHMARKS.md      every measurement, including the ones that lost
 ## Tests and benchmarks
 
 ```bash
-python -m unittest discover -s tests                  # core suite (264 tests, 1 skipped)
+python -m unittest discover -s tests                  # core suite (267 tests, 1 skipped)
 python -m unittest discover -s experiments/tests -v   # experimental kernels (31 tests)
 python scripts/ci_core_tests.py                       # pure-Python subset with MLX blocked
 bash bench/head_to_head.sh                            # Ollama head-to-head

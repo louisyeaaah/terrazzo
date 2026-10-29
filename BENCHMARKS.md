@@ -1848,7 +1848,7 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
   cache 方法是否存在，失败给出明确错误；`TERRAZZO_SKIP_MLX_LM_CHECK=1` 仅用于试验新版本。
 - `docs/COMPATIBILITY.md` 记录测试矩阵与不支持的平台。
 
-**当前测试**：核心 264 个（1 skipped）+ 实验内核 31 个；CI 两个主 job + 手动模型 E2E job（见 workflow）。
+**当前测试**：核心 267 个（1 skipped）+ 实验内核 31 个；CI 两个主 job + 手动模型 E2E job（见 workflow）。
 
 ## 45. Tools / function calling（2026-10-27）
 
@@ -1874,7 +1874,7 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
 
 关键修复：带 tools 时默认 `enable_thinking=false`（原来 `<think>` 把 token 预算吃光，
 128 token 内根本到不了 `<tool_call>`）；OpenAI 报文中 assistant `content:null` 需规范化为空串，
-否则 Jinja 模板抛 `'NoneType' is not iterable`。全套 **264 个核心测试 OK（1 skipped）+ 31 个实验内核测试**（§47 后）。
+否则 Jinja 模板抛 `'NoneType' is not iterable`。全套 **267 个核心测试 OK（1 skipped）+ 31 个实验内核测试**（§47 后）。
 
 ## 47. 残余风险修复（2026-10-27）
 
@@ -1900,8 +1900,8 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
 - Ollama 原生模式默认 `think=false`：qwen3 在 Ollama 默认开启思考会把 content 吃空、多轮历史失真。
 
 **修复后验证（commit `fbbdcb0`）**：
-- 本地：核心 **264 tests（1 skipped）**、实验内核 **31 tests（3 skipped）**、纯 Python（MLX blocked）
-  **162 run / 0 fail / 22 skip**。
+- 本地：核心 **267 tests（1 skipped）**、实验内核 **31 tests（3 skipped）**、纯 Python（MLX blocked）
+  **165 run / 0 fail / 25 skip**。
 - CI（[run 40426254576](https://github.com/louisyeaaah/terrazzo/actions/runs/40426254576)）：
   `Core tests (pure Python, MLX blocked)` ✅、`macOS (MLX) import + tests`（含 Metal kernel 与
   experiments）✅；`Model E2E` 仅在手动 `workflow_dispatch` 时运行（本次按预期 skipped）。
@@ -2333,12 +2333,14 @@ completion batch=16、无前缀缓存、16 会话 ×2 turns ×64。单次运行�
 | 检查 | Qwen3.5 0.8B | Gemma 4 E2B |
 |---|---|---|
 | prewarm | 2.44s，49.4MB | 4.53s，28.9MB |
-| 单请求 cache vs no-cache | **21 vs 21，逐字一致** | **11 vs 11，逐字一致** |
-| 4 并发（A/B/A/B） | **4/4 逐字一致** | **4/4 逐字一致** |
+| 单请求 cache vs no-cache | **21 vs 21，逐字一致**；实际复用 2432 tokens | **11 vs 11，逐字一致**；实际复用 2592 tokens |
+| 4 并发 A 分支 | 一致 | 一致 |
+| 4 并发 B 分支 | **不一致** | **不一致** |
 
-并发 B 分支的差异在修复 mask 的 `extend/filter` 标志失效后消失；因此此前不能归因于
-原生 cache merge 或浮点误差。当前单请求与 4 并发通过；多轮/full-hit 的真实 MLX 集成仍
-待补。数据：`bench/native_cache_results.json`。
+之前“4/4 一致”是在 native full/partial 都被误跳过、实际全部重算时得到的，不能作为
+mask 修复贡献的证据。现在已断言传入原生 cache、实际复用 tokens>0；单请求通过，但并发
+B 仍不一致。mask 修复本身有效，但本轮并发结果仍不能归因于 mask 或浮点。数据：
+`bench/native_cache_results.json`。
 
 ## 62. Decode 计时口径
 
@@ -2358,9 +2360,10 @@ Ollama 仍用服务端 `eval_count/eval_duration`，`prompt_eval_duration` 不�
 
 - extend 后 `_dsh_has_padding=True`，`make_mask(1)` 非 None；
 - filter 后标志刷新为 False；
-- 修复后原生 cache 的 4 并发 A/B 分支全部与 no-cache 逐字一致。
+- 修复后 A 分支一致；但允许原生复用后 B 分支仍不一致，因此 mask 缺陷不能单独解释
+  并发差异。
 
-这是确定控制逻辑缺陷，不是浮点误差。
+这是确定控制逻辑缺陷，不是浮点误差；但不能用它解释允许原生复用后的并发 B 差异。
 
 ## 64. 缓存实际复用统计
 

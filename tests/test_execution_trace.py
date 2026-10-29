@@ -422,3 +422,134 @@ class LifecycleTest(unittest.TestCase):
         self.assertEqual(e.prefix_cache.num_hits, 0)
         self.assertEqual(e.prefix_hit_tokens, 0)
         self.assertEqual(e.prefix_reuse_autos, 0)
+
+
+    def test_native_prefix_with_suffix_restores_cache(self):
+        import types
+
+        class FakePrefixCache:
+            def __init__(self):
+                self.num_hits = 0; self.num_stores = 0
+            def peek(self, ids):
+                p = types.SimpleNamespace(native=[object()], nbytes=1, num_tokens=16)
+                return p, 16
+            def lookup(self, ids):
+                self.num_hits += 1
+                p = types.SimpleNamespace(native=[object()], nbytes=1, num_tokens=16)
+                return p, 16
+            def undo_hit(self, prefix=None):
+                self.num_hits = max(0, self.num_hits - 1)
+        class FakeCost:
+            class P:
+                reuse = True
+            def estimate(self, *a, **k):
+                return self.P()
+        class FakeRunner:
+            seen = None
+            def insert(self, seq, cache=None, cached_tokens=0):
+                self.seen = (cache, cached_tokens)
+                seq.cached_prompt_tokens = cached_tokens
+                return 7
+        e = Engine.__new__(Engine)
+        e.cfg = types.SimpleNamespace(prefix_reuse="always")
+        e.prefix_cache = FakePrefixCache()
+        e.cost_model = FakeCost()
+        e.runner = FakeRunner()
+        e._inserted = {}
+        e.prefix_hit_tokens = 0
+        e.prefix_reuse_autos = 0
+        e.prefix_recompute_skips = 0
+        e._seed_caches = lambda prefix, n: ["native-cache"]
+        seq = Sequence(request_id="r", prompt_token_ids=list(range(18)),
+                       sampling_params=SamplingParams(max_tokens=4))
+        outs = types.SimpleNamespace(chunks=[types.SimpleNamespace(seq=seq, is_prefill=True)])
+        e._insert_new(outs)
+        self.assertEqual(e.runner.seen, (["native-cache"], 16))
+        self.assertEqual(e.prefix_hit_tokens, 16)
+        self.assertEqual(e.prefix_reuse_autos, 1)
+        self.assertEqual(e.prefix_cache.num_hits, 1)
+
+    def test_native_no_suffix_skips_lookup(self):
+        import types
+
+        class FakePrefixCache:
+            num_hits = 0; num_stores = 0
+            lookups = 0
+            def peek(self, ids):
+                p = types.SimpleNamespace(native=[object()], nbytes=1, num_tokens=16)
+                return p, 16
+            def lookup(self, ids):
+                self.lookups += 1
+                return self.peek(ids)
+        class FakeCost:
+            class P:
+                reuse = True
+            def estimate(self, *a, **k):
+                return self.P()
+        class FakeRunner:
+            seen = None
+            def insert(self, seq, cache=None, cached_tokens=0):
+                self.seen = (cache, cached_tokens)
+                seq.cached_prompt_tokens = 0
+                return 7
+        e = Engine.__new__(Engine)
+        e.cfg = types.SimpleNamespace(prefix_reuse="always")
+        e.prefix_cache = FakePrefixCache()
+        e.cost_model = FakeCost()
+        e.runner = FakeRunner()
+        e._inserted = {}
+        e.prefix_hit_tokens = 0
+        e.prefix_reuse_autos = 0
+        e.prefix_recompute_skips = 0
+        e._seed_caches = lambda prefix, n: ["native-cache"]
+        seq = Sequence(request_id="r", prompt_token_ids=list(range(16)),
+                       sampling_params=SamplingParams(max_tokens=4))
+        outs = types.SimpleNamespace(chunks=[types.SimpleNamespace(seq=seq, is_prefill=True)])
+        e._insert_new(outs)
+        self.assertEqual(e.prefix_cache.lookups, 0)
+        self.assertEqual(e.runner.seen, (None, 0))
+        self.assertEqual(e.prefix_hit_tokens, 0)
+
+    def test_insert_failure_undoes_hit_once(self):
+        import types
+
+        class FakePrefixCache:
+            def __init__(self):
+                self.num_hits = 1; self.num_stores = 0
+            def peek(self, ids):
+                return types.SimpleNamespace(native=None, nbytes=1, num_tokens=16), 16
+            def lookup(self, ids):
+                self.num_hits += 1
+                return types.SimpleNamespace(native=None, nbytes=1, num_tokens=16), 16
+            def undo_hit(self, prefix=None):
+                self.num_hits = max(0, self.num_hits - 1)
+        class FakeCost:
+            class P:
+                reuse = True
+            def estimate(self, *a, **k):
+                return self.P()
+        class FakeRunner:
+            calls = 0
+            def insert(self, seq, cache=None, cached_tokens=0):
+                self.calls += 1
+                if self.calls == 1:
+                    raise RuntimeError("insert failed")
+                seq.cached_prompt_tokens = 0
+                return 7
+        e = Engine.__new__(Engine)
+        e.cfg = types.SimpleNamespace(prefix_reuse="always")
+        e.prefix_cache = FakePrefixCache()
+        e.cost_model = FakeCost()
+        e.runner = FakeRunner()
+        e._inserted = {}
+        e.prefix_hit_tokens = 0
+        e.prefix_reuse_autos = 0
+        e.prefix_recompute_skips = 0
+        e._seed_caches = lambda prefix, n: ["cache"]
+        seq = Sequence(request_id="r", prompt_token_ids=list(range(32)),
+                       sampling_params=SamplingParams(max_tokens=4))
+        outs = types.SimpleNamespace(chunks=[types.SimpleNamespace(seq=seq, is_prefill=True)])
+        e._insert_new(outs)
+        self.assertEqual(e.runner.calls, 2)
+        self.assertEqual(e.prefix_cache.num_hits, 1)  # prior successful hit preserved
+        self.assertEqual(e.prefix_hit_tokens, 0)
