@@ -440,28 +440,31 @@ class Engine:
             if not chunk.is_prefill or seq.request_id in self._inserted:
                 continue
             cache, cached_tokens = None, 0
+            prefix = None
+            lookup_happened = False
             if self.prefix_cache is not None:
                 hit = self.prefix_cache.peek(seq.prompt_token_ids)
                 if hit is not None:
                     prefix, cached_tokens = hit
+                    # Native snapshots can only be restored on a full prefix.
+                    # A full native hit would make the runner recompute (no
+                    # reliable one-token rollback), so skip the lookup entirely:
+                    # do not count it as a cache hit.
+                    native_full = (prefix.native is not None
+                                   and cached_tokens == prefix.num_tokens)
+                    native_partial = (prefix.native is not None
+                                      and cached_tokens != prefix.num_tokens)
                     decision = self.cost_model.estimate(
                         seq.prompt_len, cached_tokens, prefix.nbytes,
                         policy=self.cfg.prefix_reuse)
-                    # Native (ArraysCache / sliding-window) snapshots are only
-                    # usable on a full registered-prefix hit. A partial hit must
-                    # recompute rather than seeding a partial state.
-                    native_partial = (prefix.native is not None
-                                      and cached_tokens != prefix.num_tokens)
-                    if decision.reuse and not native_partial:
-                        # consume the hit (stats + LRU) only when we actually reuse it
+                    if decision.reuse and not native_partial and not native_full:
                         confirmed = self.prefix_cache.lookup(seq.prompt_token_ids)
                         if confirmed is not None:
                             prefix, cached_tokens = confirmed
+                        lookup_happened = True
                         cache = self._seed_caches(prefix, cached_tokens)
                         seq.cached_prompt_tokens = cached_tokens
-                        seq.prefix_blocks = []  # blocks are owned by the shared prefix
-                        self.prefix_hit_tokens += cached_tokens
-                        self.prefix_reuse_autos += 1
+                        seq.prefix_blocks = []  # blocks owned by the shared prefix
                     else:
                         self.prefix_recompute_skips += 1
                         cached_tokens = 0
@@ -470,12 +473,21 @@ class Engine:
             except Exception:
                 if cache is not None:
                     # shared-prefix reuse failed: retry without it rather than dropping
-                    self.prefix_cache.num_hits -= 1
-                    self.prefix_hit_tokens -= cached_tokens
+                    if lookup_happened:
+                        self.prefix_cache.undo_hit(prefix)
                     uid = self.runner.insert(seq)
                     seq.cached_prompt_tokens = 0
+                    cached_tokens = 0
                 else:
                     raise
+            actual = int(getattr(seq, "cached_prompt_tokens", 0) or 0)
+            if lookup_happened:
+                if actual <= 0:
+                    self.prefix_cache.undo_hit(prefix)
+                else:
+                    # count what the executor actually reused, not what was found
+                    self.prefix_hit_tokens += actual
+                    self.prefix_reuse_autos += 1
             self._inserted[seq.request_id] = uid
             inserted.append(seq.request_id)
         return inserted, cache_before

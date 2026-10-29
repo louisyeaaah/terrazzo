@@ -59,6 +59,22 @@ def _install_padding_tracking(cls) -> None:
     cls.prepare = prepare
     cls.finalize = finalize
 
+    # extend()/filter() change left_padding/batch layout without going through
+    # prepare()/finalize(); invalidate and recompute the flag on those paths too.
+    for name in ("extend", "filter"):
+        original = getattr(cls, name, None)
+        if original is None:
+            continue
+
+        def make_wrapper(original):
+            def wrapper(self, *args, **kwargs):
+                out = original(self, *args, **kwargs)
+                _refresh(self)
+                return out
+            return wrapper
+
+        setattr(cls, name, make_wrapper(original))
+
 
 def apply_mask_patch() -> bool:
     """Install the patch once; returns True when installed/enabled."""

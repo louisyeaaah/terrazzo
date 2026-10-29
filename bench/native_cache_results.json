@@ -1,39 +1,20 @@
 {
- "date": "2026-10-29",
+ "date": "2026-10-30",
  "model_family": "Qwen3.5 0.8B / Gemma 4 E2B",
  "prefix_tokens": 2000,
- "implementation": "SharedPrefix.native stores (cache class, cloned state, meta_state); prefill only block-aligned registered tokens; full-prefix restore; native full-hit without suffix recomputes",
- "boundary_fixes": [
-  "register_prefix trims token_ids before prefill",
-  "full-hit rollback: KVCache really sliced by one token; native cache drops and recomputes"
- ],
+ "implementation": "SharedPrefix.native stores cache class/state/meta; register trims to block boundary before prefill; full native hit restores, full hit without suffix recomputes; partial native hits recompute",
  "qwen3.5-0.8b": {
   "prewarm_s": 2.44,
-  "entries": 1,
   "nbytes": 49422336,
-  "single": {
-   "cached": 21,
-   "nocache": 21,
-   "exact": true
-  },
-  "concurrent_4": {
-   "A": "exact",
-   "B": "differs (cached longer)"
-  }
+  "single_cached_vs_nocache": "exact 21/21",
+  "concurrent_4": "exact all four"
  },
  "gemma4-e2b": {
   "prewarm_s": 4.53,
-  "entries": 1,
   "nbytes": 28889088,
-  "single": {
-   "cached": 11,
-   "nocache": 11,
-   "exact": true
-  },
-  "concurrent_4": {
-   "A": "exact",
-   "B": "differs (one punctuation/continuation)"
-  }
+  "single_cached_vs_nocache": "exact 11/11",
+  "concurrent_4": "exact all four"
  },
- "verdict": "boundary fixes make single-request native cache exact for both; concurrent branch B still differs -> full cache correctness not accepted"
+ "mask_fix": "BatchKVCache.extend/filter now refresh _dsh_has_padding; stale False caused padded decode to skip mask. Native concurrent B mismatch disappeared after this fix.",
+ "verdict": "single and 4-way concurrent exact after boundary+mask fixes; multi-turn/full-hit integration and real MLX logits still pending"
 }

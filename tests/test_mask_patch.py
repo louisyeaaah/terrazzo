@@ -49,6 +49,26 @@ class MaskPatchTest(unittest.TestCase):
         self.assertIsNotNone(mask)
         mx.eval(mask)
 
+    def test_extend_refreshes_padding_flag(self):
+        if not self.enabled:
+            self.skipTest("patch disabled")
+        cache = self.cache_cls([0])
+        other = self.cache_cls([4])
+        cache.extend(other)
+        self.assertTrue(cache._dsh_has_padding)
+        mask = cache.make_mask(1)
+        self.assertIsNotNone(mask)
+        mx.eval(mask)
+
+    def test_filter_refreshes_padding_flag(self):
+        if not self.enabled:
+            self.skipTest("patch disabled")
+        cache = self.cache_cls([0, 4])
+        cache.prepare()
+        cache.filter(mx.array([1]))
+        self.assertFalse(cache._dsh_has_padding)
+        self.assertIsNone(cache.make_mask(1))
+
     def test_disable_restores_original(self):
         disable_mask_patch()
         cache = self.cache_cls([0, 0])

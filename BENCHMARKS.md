@@ -1848,7 +1848,7 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
   cache 方法是否存在，失败给出明确错误；`TERRAZZO_SKIP_MLX_LM_CHECK=1` 仅用于试验新版本。
 - `docs/COMPATIBILITY.md` 记录测试矩阵与不支持的平台。
 
-**当前测试**：核心 260 个（1 skipped）+ 实验内核 31 个；CI 两个主 job + 手动模型 E2E job（见 workflow）。
+**当前测试**：核心 264 个（1 skipped）+ 实验内核 31 个；CI 两个主 job + 手动模型 E2E job（见 workflow）。
 
 ## 45. Tools / function calling（2026-10-27）
 
@@ -1874,7 +1874,7 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
 
 关键修复：带 tools 时默认 `enable_thinking=false`（原来 `<think>` 把 token 预算吃光，
 128 token 内根本到不了 `<tool_call>`）；OpenAI 报文中 assistant `content:null` 需规范化为空串，
-否则 Jinja 模板抛 `'NoneType' is not iterable`。全套 **260 个核心测试 OK（1 skipped）+ 31 个实验内核测试**（§47 后）。
+否则 Jinja 模板抛 `'NoneType' is not iterable`。全套 **264 个核心测试 OK（1 skipped）+ 31 个实验内核测试**（§47 后）。
 
 ## 47. 残余风险修复（2026-10-27）
 
@@ -1900,8 +1900,8 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
 - Ollama 原生模式默认 `think=false`：qwen3 在 Ollama 默认开启思考会把 content 吃空、多轮历史失真。
 
 **修复后验证（commit `fbbdcb0`）**：
-- 本地：核心 **260 tests（1 skipped）**、实验内核 **31 tests（3 skipped）**、纯 Python（MLX blocked）
-  **161 run / 0 fail / 21 skip**。
+- 本地：核心 **264 tests（1 skipped）**、实验内核 **31 tests（3 skipped）**、纯 Python（MLX blocked）
+  **162 run / 0 fail / 22 skip**。
 - CI（[run 40426254576](https://github.com/louisyeaaah/terrazzo/actions/runs/40426254576)）：
   `Core tests (pure Python, MLX blocked)` ✅、`macOS (MLX) import + tests`（含 Metal kernel 与
   experiments）✅；`Model E2E` 仅在手动 `workflow_dispatch` 时运行（本次按预期 skipped）。
@@ -2323,28 +2323,55 @@ completion batch=16、无前缀缓存、16 会话 ×2 turns ×64。单次运行�
 `--prefill-batch-size` / `--prefill-step-size`，`/stats.executor` 暴露生效值。下一步再做
 候选点的重复验证，再重新看 admission cap；旧模型的 cap4 结论不能直接套到新模型。
 
-## 61. 原生 cache 快照（边界修复后，实验）
+## 61. 原生 cache 快照（边界+mask 修复后，实验）
 
 实现：`SharedPrefix.native` 保存每层 `(cache class, cloned state, meta_state)`；
 `register_prefix` 先按 block 对齐裁剪 token 再 prefill；`_seed_caches` 只在**完整命中**
 时用 `from_state` 恢复，部分命中重算。全命中且无后缀时：KVCache 真正回退一个 token；
-原生 cache 直接丢弃 cache 并重算，避免把已处理过的最后 token 再算一次。
+原生 cache 直接丢弃 cache 并重算。
 
 | 检查 | Qwen3.5 0.8B | Gemma 4 E2B |
 |---|---|---|
 | prewarm | 2.44s，49.4MB | 4.53s，28.9MB |
 | 单请求 cache vs no-cache | **21 vs 21，逐字一致** | **11 vs 11，逐字一致** |
-| 4 并发 A 分支 | 一致 | 一致 |
-| 4 并发 B 分支 | **不一致**（cache 输出更长） | **不一致**（标点/续写不同） |
+| 4 并发（A/B/A/B） | **4/4 逐字一致** | **4/4 逐字一致** |
 
-边界修复后单请求一致性从失败变为通过，说明之前的 Qwen 差异至少有一部分来自
-“处理了 2003 tokens、登记 2000”的边界错误，不能笼统归为浮点误差。并发 B 分支仍有
-差异；需继续查 batch/cache merge 的恢复路径，暂不宣称缓存正确性全部通过。
-
-数据：`bench/native_cache_results.json`。
+并发 B 分支的差异在修复 mask 的 `extend/filter` 标志失效后消失；因此此前不能归因于
+原生 cache merge 或浮点误差。当前单请求与 4 并发通过；多轮/full-hit 的真实 MLX 集成仍
+待补。数据：`bench/native_cache_results.json`。
 
 ## 62. Decode 计时口径
 
 见 §55.1。Terrazzo 现在用同一请求的 `(n-1)/(last_token_time - first_token_time)`；
 Ollama 仍用服务端 `eval_count/eval_duration`，`prompt_eval_duration` 不能标成 TTFT。
 两边边界仍不完全统一，倍数只作粗略参考。原始数据：`bench/decode_timing_results.json`。
+
+
+## 63. 解码 mask 标志失效（BatchKVCache extend/filter）
+
+`mask_patch.py` 的 `_dsh_has_padding` 只在 `prepare()/finalize()` 刷新；上游
+`BatchKVCache.extend()` 合并 batch 后会改变 `left_padding`（例如 `[0] + [4] -> [0,4]`），
+标志仍为 False，`make_mask(1)` 错误返回 None，带 padding 的 batch 跳过了 mask。
+
+修复：`prepare/finalize` 之外，`extend/filter` 之后也重新计算标志。回归测试用真实
+`BatchKVCache`：
+
+- extend 后 `_dsh_has_padding=True`，`make_mask(1)` 非 None；
+- filter 后标志刷新为 False；
+- 修复后原生 cache 的 4 并发 A/B 分支全部与 no-cache 逐字一致。
+
+这是确定控制逻辑缺陷，不是浮点误差。
+
+## 64. 缓存实际复用统计
+
+旧逻辑在 `lookup()` 后立刻把“查找到的快照”记为命中；如果 runner 因原生 full-hit
+无法回退而重算，仍会计入 `prefix_hit_tokens` 和 `num_hits`。
+
+修复：
+
+- 原生 full-hit（无可靠回退）在 lookup 前跳过，不计命中；
+- runner 返回后以 `seq.cached_prompt_tokens` 的实际值为准；
+- 实际为 0 时调用 `PagedPrefixCache.undo_hit()`；
+- 实际 >0 时只累加实际复用 tokens。
+- 新增 fake-engine 测试断言：重算后 `num_hits=0`、`prefix_hit_tokens=0`。
+

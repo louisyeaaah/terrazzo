@@ -375,3 +375,50 @@ class LifecycleTest(unittest.TestCase):
         self.assertEqual(calls[0]["segments"], [[list(range(8))]])
         self.assertEqual(calls[0]["all_tokens"], [[]])
         self.assertEqual(calls[0]["caches"], [None])
+
+
+    def test_insert_new_does_not_count_recompute_as_hit(self):
+        import types
+
+        class FakePrefixCache:
+            def __init__(self):
+                self.num_hits = 0
+                self.num_stores = 0
+                self.entries = {}
+            def peek(self, ids):
+                p = types.SimpleNamespace(native=None, nbytes=1, num_tokens=16)
+                return p, 16
+            def lookup(self, ids):
+                self.num_hits += 1
+                p = types.SimpleNamespace(native=None, nbytes=1, num_tokens=16)
+                return p, 16
+            def undo_hit(self, prefix=None):
+                self.num_hits = max(0, self.num_hits - 1)
+            def stats(self):
+                return {"hits": self.num_hits}
+        class FakeCost:
+            class P:
+                reuse = True
+            def estimate(self, *a, **k):
+                return self.P()
+        class FakeRunner:
+            def insert(self, seq, cache=None, cached_tokens=0):
+                seq.cached_prompt_tokens = 0  # executor fell back to recompute
+                return 7
+        e = Engine.__new__(Engine)
+        e.cfg = types.SimpleNamespace(prefix_reuse="always")
+        e.prefix_cache = FakePrefixCache()
+        e.cost_model = FakeCost()
+        e.runner = FakeRunner()
+        e._inserted = {}
+        e.prefix_hit_tokens = 0
+        e.prefix_reuse_autos = 0
+        e.prefix_recompute_skips = 0
+        e._seed_caches = lambda prefix, n: []
+        seq = Sequence(request_id="r", prompt_token_ids=list(range(32)),
+                       sampling_params=SamplingParams(max_tokens=4))
+        outs = types.SimpleNamespace(chunks=[types.SimpleNamespace(seq=seq, is_prefill=True)])
+        e._insert_new(outs)
+        self.assertEqual(e.prefix_cache.num_hits, 0)
+        self.assertEqual(e.prefix_hit_tokens, 0)
+        self.assertEqual(e.prefix_reuse_autos, 0)

@@ -188,6 +188,12 @@ class PagedPrefixCache:
         self._evict()
         return entry
 
+    def undo_hit(self, prefix: SharedPrefix | None = None) -> None:
+        """Undo a lookup when the executor ultimately did not reuse the prefix."""
+        self.num_hits = max(0, self.num_hits - 1)
+        if prefix is not None:
+            prefix.hits = max(0, prefix.hits - 1)
+
     # --------------------------------------------------------------- ref-count
     def acquire(self, prefix: SharedPrefix) -> None:
         prefix.ref_count += 1

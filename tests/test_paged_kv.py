@@ -175,6 +175,19 @@ class PrefixBoundaryTest(unittest.TestCase):
         self.assertEqual(aligned_prefix_length(2003, 16, min_tokens=2001), 0)
         self.assertEqual(aligned_prefix_length(15, 16), 0)
 
+    def test_undo_hit_rolls_back_lookup_counters(self):
+        bm = BlockManager(BlockManagerConfig(num_blocks=256, block_size=16))
+        pc = PagedPrefixCache(bm, max_entries=2, max_bytes=1 << 30)
+        tokens = list(range(64))
+        entry = pc.store(tokens, fake_layers(64))
+        hit = pc.lookup(tokens + [999])
+        self.assertIsNotNone(hit)
+        self.assertEqual(pc.num_hits, 1)
+        self.assertEqual(entry.hits, 1)
+        pc.undo_hit(entry)
+        self.assertEqual(pc.num_hits, 0)
+        self.assertEqual(entry.hits, 0)
+
     def test_native_store_keeps_declared_block_aligned_tokens(self):
         bm = BlockManager(BlockManagerConfig(num_blocks=256, block_size=16))
         pc = PagedPrefixCache(bm, max_entries=2, max_bytes=1 << 30)
