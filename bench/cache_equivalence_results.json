@@ -1,0 +1,37 @@
+{
+ "date": "2026-10-31",
+ "question": "cache path vs no-cache path output equality",
+ "models": [
+  "Qwen3-4B-4bit (standard KVCache)",
+  "Qwen3.5 0.8B (native ArraysCache)",
+  "Gemma 4 E2B (RotatingKVCache)"
+ ],
+ "observations": {
+  "qwen3_4b_multiturn_A": {
+   "turn1": "exact (11 tokens)",
+   "turn2": "cached 12 vs no-cache 13 tokens; stable, same 2598 input tokens"
+  },
+  "qwen3_5_native": {
+   "A": "exact",
+   "B": "cached short vs no-cache long; stable",
+   "batch1": "B still differs with prefill/completion batch=1"
+  },
+  "gemma4_native": {
+   "A": "exact",
+   "B": "punctuation/continuation differs; stable",
+   "batch1": "B still differs"
+  },
+  "logit_probe": {
+   "split_vs_full_max_abs_bf16": {
+    "qwen3.5-0.8b": 0.1875,
+    "gemma4-e2b": 0.5,
+    "qwen3-4b": 0.625
+   },
+   "first_top1": "same in probe; later greedy stop token can flip"
+  },
+  "no_cache_batch_effect": {
+   "qwen3.5-0.8b": "concurrent B differs from serial no-cache; batching alone changes output"
+  }
+ },
+ "conclusion": "cache preserves KV reuse semantics but not bitwise text under chunked bf16 prefill; near-tie greedy tokens can flip. Exact output equality is not a valid service invariant across batch/chunk paths."
+}

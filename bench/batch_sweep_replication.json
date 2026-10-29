@@ -1,0 +1,84 @@
+{
+ "timestamp": "2026-10-29T23:37:45+1100",
+ "model": "/Users/yezhipeng/project/dsh-other/terrazzo/.hf-models/qwen3.5-2b",
+ "args": {
+  "model": ".hf-models/qwen3.5-2b",
+  "sessions": 16,
+  "turns": 2,
+  "max_tokens": 64,
+  "system_tokens": 2000,
+  "port_base": 9240,
+  "grid": "4:512,8:512,4:512,8:512",
+  "out": "bench/batch_sweep_results.json"
+ },
+ "rows": [
+  {
+   "prefill_batch": 4,
+   "prefill_step": 512,
+   "sessions": 16,
+   "wall_s": 87.84,
+   "aggregate_tok_s": 23.3,
+   "ttft_p50_s": 12.73,
+   "ttft_p95_s": 40.006,
+   "completion_p95_s": 73.834,
+   "tokens": 2048,
+   "mlx_peak_mb": 3263.2,
+   "loadavg": [
+    4.51318359375,
+    5.27392578125,
+    5.49365234375
+   ]
+  },
+  {
+   "prefill_batch": 8,
+   "prefill_step": 512,
+   "sessions": 16,
+   "wall_s": 100.8,
+   "aggregate_tok_s": 19.9,
+   "ttft_p50_s": 22.539,
+   "ttft_p95_s": 45.63,
+   "completion_p95_s": 73.777,
+   "tokens": 2002,
+   "mlx_peak_mb": 5418.9,
+   "loadavg": [
+    7.0283203125,
+    5.84228515625,
+    5.68310546875
+   ]
+  },
+  {
+   "prefill_batch": 4,
+   "prefill_step": 512,
+   "sessions": 16,
+   "wall_s": 110.79,
+   "aggregate_tok_s": 18.5,
+   "ttft_p50_s": 17.261,
+   "ttft_p95_s": 45.807,
+   "completion_p95_s": 91.839,
+   "tokens": 2048,
+   "mlx_peak_mb": 3263.2,
+   "loadavg": [
+    6.333984375,
+    5.7978515625,
+    5.6708984375
+   ]
+  },
+  {
+   "prefill_batch": 8,
+   "prefill_step": 512,
+   "sessions": 16,
+   "wall_s": 140.7,
+   "aggregate_tok_s": 14.6,
+   "ttft_p50_s": 33.373,
+   "ttft_p95_s": 62.012,
+   "completion_p95_s": 101.351,
+   "tokens": 2048,
+   "mlx_peak_mb": 5327.9,
+   "loadavg": [
+    9.43017578125,
+    6.3154296875,
+    5.84228515625
+   ]
+  }
+ ]
+}

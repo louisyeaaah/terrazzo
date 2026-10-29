@@ -2322,7 +2322,8 @@ completion batch=16、无前缀缓存、16 会话 ×2 turns ×64。单次运行�
 | 8 | 1024 | 26.6 | 18.82s | 35.76s | 57.58s | 6080 |
 | 4 | 256 | 31.1 | **9.08s** | 29.71s | 55.20s | 3023 |
 
-数据/脚本：`bench/batch_sweep.py`、`bench/batch_sweep_results.json`。初步取舍：
+数据/脚本：`bench/batch_sweep.py`、`bench/batch_sweep_results.json`；
+复测（loadavg 5.7，仅方向性）：`bench/batch_sweep_replication.json`。初步取舍：
 `4:512` 降 TTFT/内存但完成 p95 略差；`8:512` 吞吐/p95 更均衡；`8:1024` 明显变差。
 这是静态执行器参数，不代表 scheduler 能逐步控制 prefill 预算。CLI 已加
 `--prefill-batch-size` / `--prefill-step-size`，`/stats.executor` 暴露生效值。下一步再做
@@ -2382,3 +2383,48 @@ Ollama 仍用服务端 `eval_count/eval_duration`，`prompt_eval_duration` 不�
 - 实际为 0 时调用 `PagedPrefixCache.undo_hit()`；
 - 实际 >0 时只累加实际复用 tokens。
 - 新增 fake-engine 测试断言：重算后 `num_hits=0`、`prefix_hit_tokens=0`。
+
+## 65. 缓存一致性边界：chunked bf16 而非命中逻辑（2026-10-31）
+
+缓存命中长度、实际复用 tokens、分支隔离都已由测试和 `/stats` 验证；剩余差异是
+**cached vs no-cache 的逐字输出**，不是命中逻辑。
+
+证据：
+
+| 场景 | 结果 |
+|---|---|
+| Qwen3.5 0.8B / Gemma 4 E2B 单请求 A | 逐字一致 |
+| 两个模型的单请求 B | 不一致；cache 侧与 no-cache 侧各自稳定 |
+| batch=1（prefill/completion 均为 1）重跑 B | **仍不一致**，排除 continuous batching 的合并 |
+| split-prefill vs full-prefill 同一 prompt 的 logits | Qwen3.5 0.8B max abs diff 0.1875；Gemma 4 0.5；Qwen3-4B 0.625（bf16） |
+| Qwen3-4B 标准 cache 多轮 A 第 2 轮 | cache 12 vs no-cache 13 tokens，输入长度相同且稳定 |
+| Qwen3.5 0.8B no-cache 并发 B vs 串行 B | 并发本身也会改变输出 |
+
+结论：
+
+- 前缀 cache 保留的是 KV 复用语义，**不保证跨 prefill/chunk 边界的逐 bit 输出一致**；
+  近 tie 的 greedy token（尤其是 EOS/逗号）会被 bf16 累加顺序翻转；
+- 这不是 prefix hit 长度、native 恢复位置或 A/B 串状态；这些路径已有单测和真实模型验证；
+- 因此缓存正确性验收标准改为：实际复用正确、分支隔离、单请求 A 类稳定输出一致；
+  B 类近 tie 输出差异记录为数值边界，不再继续追“逐字一致”；
+- 若要强求逐字一致，需要固定 prefill chunk 边界/数值路径或改用更高精度，这会牺牲
+  当前性能目标，未在本轮实施。
+
+数据：`bench/cache_equivalence_results.json`、`bench/native_cache_results.json`。
+
+### 65.1 Batch 候选与 admission cap 复测
+
+`4:512` vs `8:512`（16 会话 ×2 turns ×64，prefill-only 差异）：
+
+| 运行 | 4:512 tok/s / TTFT | 8:512 tok/s / TTFT |
+|---|---:|---:|
+| 初测（loadavg 2.4） | 32.4 / 9.18s | 32.5 / 14.48s |
+| 复测（loadavg 5.7，方向性） | 23.3 / 12.73s；18.5 / 17.26s | 19.9 / 22.54s；14.6 / 33.37s |
+
+两次都显示 `4:512` 在 TTFT 上更好，吞吐不低于 `8:512`；completion p95 噪声较大。
+admission cap 8/16/32（同 4:512，loadavg 5.7）：16.3 / 16.4 / 15.8 tok/s，
+completion p95 106.2 / 104.8 / 108.3s。**cap 16 仍是最稳的候选，cap 32 无收益。**
+
+数据：`bench/batch_sweep_replication.json`、`bench/batch_cap8_results.json`、
+`bench/batch_cap16_results.json`、`bench/batch_cap32_results.json`。高负载下只作方向性结论，
+不宣称最终最优配置。

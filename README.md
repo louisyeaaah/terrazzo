@@ -88,11 +88,11 @@ steady state as well.
 - No "which model is fastest overall" claim. Generation-behavior diagnostics, benchmark
   caveats and invalidated results live in
   [BENCHMARKS §54–64](BENCHMARKS.md); performance comparisons are no longer a homepage claim.
-- **Cache correctness gate is not fully green yet:** Qwen3-4B single-request, concurrent,
-  snapshot-reuse and abort-then-reuse match no-cache, but one multi-turn branch differs by
-  one token. Native Qwen3.5/Gemma 4 snapshots are exact for single request with actual
-  reuse >0; one concurrent branch still differs. See
-  [BENCHMARKS §58–64](BENCHMARKS.md). Cache gains stay unclaimed until resolved.
+- **Cache correctness is bounded, not bitwise:** hit length, actual reuse, branch isolation
+  and single-request A outputs are verified; a near-tie B token can still differ between
+  cached and no-cache paths because chunked bf16 prefill changes logits. See
+  [BENCHMARKS §65](BENCHMARKS.md). Cache speedups are not claimed as exact-output
+  equivalence.
 - Decode-only numbers exclude queueing, prefill and first-token wait; do not read them as
   end-to-end speed.
 

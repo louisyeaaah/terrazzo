@@ -1,0 +1,35 @@
+{
+ "timestamp": "2026-10-29T23:44:55+1100",
+ "model": "/Users/yezhipeng/project/dsh-other/terrazzo/.hf-models/qwen3.5-2b",
+ "args": {
+  "model": ".hf-models/qwen3.5-2b",
+  "sessions": 16,
+  "turns": 2,
+  "max_tokens": 64,
+  "system_tokens": 2000,
+  "port_base": 9292,
+  "max_num_seqs": 32,
+  "grid": "4:512",
+  "out": "bench/batch_cap32_results.json"
+ },
+ "rows": [
+  {
+   "prefill_batch": 4,
+   "prefill_step": 512,
+   "max_num_seqs": 32,
+   "sessions": 16,
+   "wall_s": 129.35,
+   "aggregate_tok_s": 15.8,
+   "ttft_p50_s": 19.187,
+   "ttft_p95_s": 57.586,
+   "completion_p95_s": 108.345,
+   "tokens": 2048,
+   "mlx_peak_mb": 3260.5,
+   "loadavg": [
+    5.02392578125,
+    6.43994140625,
+    6.4306640625
+   ]
+  }
+ ]
+}

@@ -19,12 +19,14 @@ def wait(base):
         except Exception: pass
         time.sleep(1)
     return False
-def start(model,port,pbatch,step):
+def start(model,port,pbatch,step,max_seqs=None):
     log=open(f'/tmp/batch_sweep_{pbatch}_{step}.log','wb')
     cmd=[PY,'-m','terrazzo','serve','--model',model,'--host','127.0.0.1','--port',str(port),
          '--profile','agent','--no-thinking','--no-prefix-cache','--scheduler-policy','fifo',
          '--completion-batch-size','16','--prefill-batch-size',str(pbatch),
          '--prefill-step-size',str(step)]
+    if max_seqs is not None:
+        cmd += ['--max-num-seqs', str(max_seqs)]
     env={**os.environ,'TERRAZZO_ADMIT_SETTLE_MS':'50','TERRAZZO_STACK_DUMP':'1'}
     p=subprocess.Popen(cmd,cwd=str(ROOT),stdout=log,stderr=subprocess.STDOUT,env=env)
     base=f'http://127.0.0.1:{port}'
@@ -46,6 +48,7 @@ def main():
     ap.add_argument('--max-tokens',type=int,default=64)
     ap.add_argument('--system-tokens',type=int,default=2000)
     ap.add_argument('--port-base',type=int,default=9130)
+    ap.add_argument('--max-num-seqs',type=int,default=None)
     ap.add_argument('--grid',default='8:512,4:512,16:512,8:256,8:1024,4:256')
     ap.add_argument('--out',default=str(ROOT/'bench'/'batch_sweep_results.json'))
     args=ap.parse_args(); model=str(Path(args.model).resolve())
@@ -55,14 +58,15 @@ def main():
         pb,step=[int(x) for x in item.split(':')]
         port=args.port_base+i
         print(f'[batch] prefill_batch={pb} step={step} port={port}',flush=True)
-        srv=start(model,port,pb,step)
+        srv=start(model,port,pb,step,args.max_num_seqs)
         try:
             A.chat_stream(srv['base'],'terrazzo',[{'role':'user','content':'warm up'}],8)
             t0=time.perf_counter()
             s=A.run_workload(srv,systems,args.turns,args.max_tokens,
                              user_template='请总结规范要点 {session}（第 {turn} 轮）')
             wall=time.perf_counter()-t0
-            rows.append({'prefill_batch':pb,'prefill_step':step,'sessions':args.sessions,
+            rows.append({'prefill_batch':pb,'prefill_step':step,
+                         'max_num_seqs':args.max_num_seqs,'sessions':args.sessions,
                          'wall_s':round(wall,2),'aggregate_tok_s':s['aggregate_tok_s'],
                          'ttft_p50_s':s['ttft_p50_s'],'ttft_p95_s':s['ttft_p95_s'],
                          'completion_p95_s':s['total_p95_s'],'tokens':s['output_tokens'],

@@ -33,5 +33,7 @@
    "B": "differs (punctuation/continuation)"
   }
  },
- "verdict": "single-request native reuse now actually occurs (prefix_hit_tokens>0) and is exact; concurrent B still differs -> full cache correctness not accepted"
+ "verdict": "single A exact and actual reuse >0; B differs due chunked bf16 path, not cache hit-length or branch contamination; bitwise equality is not achieved",
+ "serial_B": "cached vs no-cache differs even with batch=1; stable per path",
+ "batch1_B": "still differs (prefill/completion batch=1)"
 }
