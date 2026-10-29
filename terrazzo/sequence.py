@@ -53,6 +53,9 @@ class Sequence:
 
     arrival_time: float = field(default_factory=time.perf_counter)
     first_token_time: float | None = None
+    last_token_time: float | None = None
+    # inter-token wall-clock gaps observed by Engine (bounded by max_tokens)
+    token_gaps: list[float] = field(default_factory=list)
     finished_time: float | None = None
     finish_reason: str | None = None
 

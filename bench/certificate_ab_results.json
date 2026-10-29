@@ -1,0 +1,124 @@
+{
+ "timestamp": "2026-10-29T22:20:44+1100",
+ "args": {
+  "model": ".hf-models/qwen3.5-2b",
+  "sessions": 16,
+  "turns": 2,
+  "max_tokens": 64,
+  "system_tokens": 2000,
+  "port_base": 9190,
+  "out": "bench/certificate_ab_results.json"
+ },
+ "rows": [
+  {
+   "policy": "auto",
+   "prewarm_s": null,
+   "wall_s": 8.37,
+   "tok_s": 244.6,
+   "ttft_p50_s": 1.063,
+   "ttft_p95_s": 1.426,
+   "completion_p95_s": 4.634,
+   "tokens": 2048,
+   "prefix_cache": {
+    "entries": 1,
+    "active": 0,
+    "nbytes": 49422336,
+    "hits": 33,
+    "misses": 0,
+    "stores": 1,
+    "evictions": 0,
+    "hit_rate": 1.0,
+    "reuse_policy": "auto",
+    "recompute_skips": 0,
+    "reuse_autos": 32
+   },
+   "last_cost": {
+    "prompt_tokens": 2542,
+    "cached_tokens": 2432,
+    "uncached_tokens": 110,
+    "snapshot_mb": 49.4,
+    "copy_ms": 304.5,
+    "recompute_ms": 134835.486,
+    "reuse": true,
+    "reason": "copy-cheaper",
+    "certificate": "uncertain_reuse",
+    "uncertain": true,
+    "copy_range": {
+     "ms": 304.5,
+     "low_ms": 213.3,
+     "high_ms": 395.7,
+     "confident": true,
+     "source": "default-rate"
+    },
+    "recompute_range": {
+     "ms": 134835.486,
+     "low_ms": 94384.84,
+     "high_ms": 175286.132,
+     "confident": false,
+     "source": "above-calibration"
+    }
+   },
+   "prefill_calibration_skips": 8,
+   "loadavg": [
+    2.28515625,
+    2.2021484375,
+    2.08154296875
+   ]
+  },
+  {
+   "policy": "certified",
+   "prewarm_s": null,
+   "wall_s": 64.08,
+   "tok_s": 32.0,
+   "ttft_p50_s": 14.792,
+   "ttft_p95_s": 29.03,
+   "completion_p95_s": 46.527,
+   "tokens": 2048,
+   "prefix_cache": {
+    "entries": 1,
+    "active": 0,
+    "nbytes": 49422336,
+    "hits": 1,
+    "misses": 0,
+    "stores": 1,
+    "evictions": 0,
+    "hit_rate": 1.0,
+    "reuse_policy": "certified",
+    "recompute_skips": 32,
+    "reuse_autos": 0
+   },
+   "last_cost": {
+    "prompt_tokens": 2545,
+    "cached_tokens": 2432,
+    "uncached_tokens": 113,
+    "snapshot_mb": 49.4,
+    "copy_ms": 304.5,
+    "recompute_ms": 2545000.0,
+    "reuse": false,
+    "reason": "certified:recompute",
+    "certificate": "certified_recompute",
+    "uncertain": true,
+    "copy_range": {
+     "ms": 304.5,
+     "low_ms": 213.3,
+     "high_ms": 395.7,
+     "confident": true,
+     "source": "default-rate"
+    },
+    "recompute_range": {
+     "ms": 2545000.0,
+     "low_ms": 1781500.0,
+     "high_ms": 3308500.0,
+     "confident": false,
+     "source": "above-calibration"
+    }
+   },
+   "prefill_calibration_skips": 0,
+   "loadavg": [
+    1.875,
+    2.091796875,
+    2.04833984375
+   ]
+  }
+ ]
+}

@@ -67,6 +67,7 @@ class PrefixCost:
     recompute_ms: float
     reuse: bool
     reason: str
+    certificate: str = "n/a"
     copy: Prediction | None = None
     recompute: Prediction | None = None
     uncertain: bool = False
@@ -81,6 +82,7 @@ class PrefixCost:
             "recompute_ms": round(self.recompute_ms, 3),
             "reuse": self.reuse,
             "reason": self.reason,
+            "certificate": self.certificate,
             "uncertain": self.uncertain,
         }
         if self.copy:
@@ -160,10 +162,27 @@ class CostModel:
         recompute_cached = self.predict_prefill(cached_tokens)
         reuse = False
         uncertain = False
+        certificate = "n/a"
+        certified_reuse = (
+            copy.confident and recompute_cached.confident
+            and copy.high_ms < recompute_cached.low_ms * self.reuse_margin
+        )
+        certified_recompute = (
+            copy.confident and recompute_cached.confident
+            and copy.low_ms > recompute_cached.high_ms * self.reuse_margin
+        )
         if policy == "never" or cached_tokens <= 0:
             reuse, reason = False, ("policy:never" if policy == "never" else "no-cache-hit")
         elif policy == "always":
             reuse, reason = True, "policy:always"
+            certificate = "policy:always"
+        elif policy == "certified":
+            # DoSA-style gate: only take the copy branch when both interval
+            # predictions are calibrated and the ranges do not overlap.
+            reuse = certified_reuse
+            uncertain = not (copy.confident and recompute_cached.confident)
+            reason = "certified:copy-cheaper" if reuse else "certified:recompute"
+            certificate = "certified_reuse" if reuse else "certified_recompute"
         else:
             # conservative: only reuse if even the optimistic copy range beats the
             # pessimistic recompute range for the cached span
@@ -172,12 +191,16 @@ class CostModel:
             reason = "copy-cheaper" if reuse else (
                 "recompute-cheaper" if copy.high_ms >= recompute_cached.high_ms * self.reuse_margin
                 else "uncertain-conservative")
-            if uncertain and reuse:
-                reason = "copy-cheaper(uncertain)"
+            if reuse:
+                certificate = "certified_reuse" if certified_reuse else "uncertain_reuse"
+            else:
+                certificate = ("certified_recompute" if certified_recompute
+                               else "uncertain_recompute")
         c = PrefixCost(prompt_tokens=prompt_tokens, cached_tokens=cached_tokens,
                        uncached_tokens=uncached, snapshot_bytes=int(snapshot_bytes),
                        copy_ms=copy.ms, recompute_ms=recompute.ms,
-                       reuse=reuse, reason=reason, copy=copy, recompute=recompute,
+                       reuse=reuse, reason=reason, certificate=certificate,
+                       copy=copy, recompute=recompute,
                        uncertain=uncertain)
         self.last_cost = c
         return c

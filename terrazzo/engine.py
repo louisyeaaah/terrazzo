@@ -52,7 +52,7 @@ class EngineConfig:
     # (agent traffic: every session sends the same system prompt, different user turn)
     prefix_dedupe_min_tokens: int = 1024
     # auto: copy only when cheaper than recomputing the cached span (see cost.py)
-    prefix_reuse: str = "auto"          # auto | always | never
+    prefix_reuse: str = "auto"          # auto | always | never | certified (experimental)
     scheduler_policy: str = "fifo"      # fifo | cost
     scheduler_aging_tokens_per_s: float = 100.0
     memory_cost_weight: float = 0.1     # cost policy: predicted KV tokens weight
@@ -196,8 +196,11 @@ class Engine:
         self._first_prefill_steps: list[dict] = []
         # bounded request -> predicted cost (for explaining scheduling decisions)
         self._request_costs: OrderedDict[str, dict] = OrderedDict()
+        self._request_timelines: deque[dict] = deque(maxlen=64)
         self._step_prompt_tokens = 0
         self._step_decode_tokens = 0
+        self._step_used_prefix_cache = False
+        self.prefill_calibration_skips = 0
         self._control_totals = {
             "steps": 0, "scheduled_prefill_tokens": 0, "actual_prompt_tokens": 0,
             "scheduled_decode_tokens": 0, "actual_decode_tokens": 0,
@@ -402,6 +405,7 @@ class Engine:
             self._apply_preemptions(outs)
             self._step_prompt_tokens = 0
             self._step_decode_tokens = 0
+            self._step_used_prefix_cache = False
             inserted, cache_before = self._insert_new(outs)
 
             if self.scheduler.num_unfinished == 0:
@@ -417,7 +421,13 @@ class Engine:
             self.num_steps += 1
             self.step_times.append(elapsed)
             if self.cfg.cost_calibration:
-                self.cost_model.observe_step(outs.num_prefill_tokens, elapsed)
+                if self._step_used_prefix_cache:
+                    # copy/restore time is not prefill compute; mixing it into the
+                    # prefill rate inflates recompute estimates (and can flip later
+                    # reuse decisions). Calibrate only on clean prefill steps.
+                    self.prefill_calibration_skips += 1
+                else:
+                    self.cost_model.observe_step(outs.num_prefill_tokens, elapsed)
             self._record_exec_trace(outs, inserted, cache_before, elapsed)
             return deltas
 
@@ -484,6 +494,7 @@ class Engine:
                     raise
             actual = int(getattr(seq, "cached_prompt_tokens", 0) or 0)
             if lookup_happened:
+                self._step_used_prefix_cache = True
                 if actual <= 0:
                     self.prefix_cache.undo_hit(prefix)
                 else:
@@ -688,6 +699,10 @@ class Engine:
                 continue
             token = int(r.token)
             first = seq.first_token_time is None
+            now = time.perf_counter()
+            if seq.last_token_time is not None:
+                seq.token_gaps.append(now - seq.last_token_time)
+            seq.last_token_time = now
             seq.append_token(token, seq.sampling_params.max_tokens)
             if first:
                 self.request_stages["first_token"] += 1
@@ -726,8 +741,36 @@ class Engine:
             if q is not None:
                 q.put(delta)
 
+    @staticmethod
+    def _percentile(values: list[float], q: float) -> float | None:
+        if not values:
+            return None
+        vals = sorted(values)
+        idx = min(len(vals) - 1, max(0, int(round(q * (len(vals) - 1)))))
+        return vals[idx]
+
+    def _timeline_summary(self, seq: Sequence) -> dict:
+        gaps = list(getattr(seq, "token_gaps", []) or [])
+        return {
+            "request_id": seq.request_id,
+            "prompt_tokens": seq.prompt_len,
+            "cached_prompt_tokens": int(getattr(seq, "cached_prompt_tokens", 0) or 0),
+            "output_tokens": len(seq.output_token_ids),
+            "finish_reason": seq.finish_reason,
+            "ttft_ms": round(1000 * seq.ttft(), 2) if seq.ttft() is not None else None,
+            "token_gaps_ms": [round(1000 * g, 2) for g in gaps[-16:]],
+            "gap_p50_ms": (round(1000 * self._percentile(gaps, 0.50), 2)
+                           if gaps else None),
+            "gap_p95_ms": (round(1000 * self._percentile(gaps, 0.95), 2)
+                           if gaps else None),
+            "gap_max_ms": round(1000 * max(gaps), 2) if gaps else None,
+        }
+
     def _collect_finished(self) -> None:
+        if not hasattr(self, "_request_timelines"):
+            self._request_timelines = deque(maxlen=64)
         for seq in self.scheduler.drain_finished():
+            self._request_timelines.append(self._timeline_summary(seq))
             self.request_stages["finished"] += 1
             with self._stream_lock:
                 out = self._outputs.get(seq.request_id)
@@ -850,6 +893,7 @@ class Engine:
         st["concurrency_changes"] = list(self.concurrency_changes)
         st["request_stages"] = dict(self.request_stages)
         st["cost_model"] = self.cost_model.stats()
+        st["cost_model"]["prefill_calibration_skips"] = self.prefill_calibration_skips
         c = dict(self._control_totals)
         c["actual_to_scheduled_prompt_ratio"] = round(
             c["actual_prompt_tokens"] / max(1, c["scheduled_prefill_tokens"]), 3)
@@ -857,6 +901,16 @@ class Engine:
         c["first_prefill_steps"] = list(self._first_prefill_steps)
         c["requests"] = list(self._request_costs.items())[-64:]
         st["execution_control"] = c
+        timelines = list(getattr(self, "_request_timelines", ()))
+        gap_p95 = [t["gap_p95_ms"] for t in timelines if t.get("gap_p95_ms") is not None]
+        st["timeline"] = {
+            "requests": timelines[-32:],
+            "recent_gap_p50_ms": (round(self._percentile(gap_p95, 0.50), 2)
+                                  if gap_p95 else None),
+            "recent_gap_p95_ms": (round(self._percentile(gap_p95, 0.95), 2)
+                                  if gap_p95 else None),
+            "step_times_ms": [round(1000 * x, 2) for x in self.step_times[-64:]],
+        }
         return st
 
     def close(self) -> None:
