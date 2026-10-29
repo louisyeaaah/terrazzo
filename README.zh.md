@@ -71,31 +71,18 @@ token 数全部来自服务端计数（OpenAI 风格用 `usage`，Ollama 原生�
 vLLM 单会话取第二次（稳态）运行；首次运行包含 kernel 热身（15.1 tok/s / 2.95 s）。
 4/16 会话均为稳态。
 
-### 2026 模型：先看生成行为，不做排行榜
+### 模型支持与边界
 
-性能定位到此结项。详细数字、失效原因和旧提交引用都在
-[BENCHMARKS §54–57](BENCHMARKS.md)；首页不再保留旧矩阵。现在更重要的事实是：
-**token 总数相同，不等于任务工作量相同。**
-
-- Qwen3.5 0.8B/2B：64-token 上限下双方都撞到上限，16×2 工作负载都约 2048 tokens，
-  这组 aggregate 有可比性。较低背景负载复测中 Ollama 总吞吐更高；Terrazzo TTFT p50
-  更低，但单请求完成 p95 更高。两轮背景负载并不完全一致，只能当方向性结论。
-- Qwen3.5 4B：双方都撞 64 上限，1902 vs 1752；Terrazzo 更慢，任务仍未完全对齐。
-- Gemma 4 E2B：渲染后 prompt 长度相同（2618 tokens），但 Terrazzo 在 31 tokens 时
-  以完整澄清请求自然停止；Ollama 的 64-token 回答是截断（`num_predict=256` 时会继续到
-  137 tokens 再停止）。所以 1136 vs 1994 是停止/截断差异，**不能**说 Terrazzo 更快完成
-  同一任务。
-- 模板/thinking：Terrazzo 用模型 tokenizer 的 chat template；Ollama 用
-  `RENDERER gemma4` / `RENDERER qwen3.5`（Modelfile `TEMPLATE {{ .Prompt }}`）。两边都
-  关闭 thinking；Qwen 仍渲染空的 `<think></think>` 块。
-- 第二轮输入包含第一轮回答；首轮输出长度不同会改变第二轮输入。当前 raw JSON 还没存
-  逐请求输入 token，下一轮要补。
-- Qwen3.5 ArraysCache / Gemma 4 sliding cache 仍不支持前缀快照；它对性能差距的贡献
-  **尚未隔离**。
-
-早期的 498-token 结果来自 harness 提示词不一致；这排除了旧的“执行器异常”归因，但**不排除**
-停止行为差异——见 BENCHMARKS §55.3 的生成日志。Decode-only（短提示）只留在实验记录里；
-它不含排队、prefill 和首 token 等待，不是端到端结论。
+- **前缀缓存路径（支持）：** Qwen3 系列（用 Qwen3-4B 实测），配
+  `--profile agent` / `--profile mixed`。这是产品路径。
+- **仅 raw 路径：** Qwen3.5 与 Gemma 4 2026 模型能跑，但 hybrid/sliding-window cache
+  不能被当前 dense-KV 前缀缓存快照，暂不纳入产品预设叙事。
+- 不做“哪个模型综合最快”的结论。生成行为诊断、基准 caveat 和失效记录都在
+  [BENCHMARKS §54–59](BENCHMARKS.md)；性能对照不再作为首页主张。
+- **缓存正确性尚未全部通过：**Qwen3-4B 的单请求、并发、快照复用、abort 后复用都与
+  no-cache 一致；但多轮 A 的第 2 轮差一个 token（12 vs13，输入长度相同），可重复。
+  见 [BENCHMARKS §58](BENCHMARKS.md)。在解释/修复前不宣称缓存收益。
+- Decode-only 不含排队、prefill、首 token 等待，不能读成端到端速度。
 
 ### 长系统提示：预注册是差异点
 

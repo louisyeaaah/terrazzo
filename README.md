@@ -76,37 +76,22 @@ vLLM's single-stream number is the second (steady-state) run: the first run afte
 startup is 15.1 tok/s / 2.95 s because of kernel warm-up. Its 4/16-session rows are
 steady state as well.
 
-### 2026 models: generation behavior, not a leaderboard
+### Model support and caveats
 
-Performance positioning is closed. Detailed numbers, invalidation reasons and old commit
-references live in [BENCHMARKS §54–57](BENCHMARKS.md); the homepage no longer carries the
-old matrix. What matters now is that **equal token totals do not prove equal task work**.
-
-- Qwen3.5 0.8B/2B: at a 64-token cap both sides hit the cap and generate ~2048 tokens per
-  16×2 workload, so those aggregate numbers are comparable. In the lower-background-load
-  retest Ollama had higher aggregate throughput; Terrazzo had lower TTFT p50 but higher
-  per-request completion p95. The two runs were not at identical background load; treat
-  this as directional, not "fully idle" numbers.
-- Qwen3.5 4B: both hit the 64-token cap; 1902 vs 1752 tokens. Terrazzo was slower, and the
-  task is still not exactly matched.
-- Gemma 4 E2B: same rendered prompt length (2618 tokens), but Terrazzo stops at 31 tokens
-  with a complete clarification request, while Ollama's 64-token answer is truncated
-  (with `num_predict=256` it continues to 137 and stops). 1136 vs 1994 is therefore a
-  stop/truncation difference, **not** evidence that Terrazzo completed the same task faster.
-- Templates/thinking: Terrazzo uses the model tokenizer chat template; Ollama uses
-  `RENDERER gemma4` / `RENDERER qwen3.5` (Modelfile `TEMPLATE {{ .Prompt }}`). Thinking is
-  off on both; Qwen still renders an empty `<think></think>` block.
-- Second-turn caveat: the second-turn input includes the first-turn answer. Different
-  first-turn output lengths change the second-turn input; the current raw JSON does not
-  store per-request input tokens yet, so this must be logged next.
-- Prefix cache remains unsupported for Qwen3.5 ArraysCache / Gemma 4 sliding caches. How
-  much it contributes to performance differences is **not isolated**.
-
-An earlier 498-token result came from a harness prompt mismatch; that rules out the old
-"executor anomaly" attribution, but it does **not** rule out a stop-behavior difference —
-see the generation log in BENCHMARKS §55.3. Decode-only numbers (short prompt) are kept in
-the experiment log only; they exclude queueing, prefill and first-token wait and are not
-end-to-end claims.
+- **Prefix-cache path (supported):** Qwen3 family (tested with Qwen3-4B) with
+  `--profile agent` / `--profile mixed`. This is the production path.
+- **Raw path only:** Qwen3.5 and Gemma 4 2026 models run, but their hybrid/sliding-window
+  caches cannot be snapshotted by the current dense-KV prefix cache. They are not part of
+  the production preset story yet.
+- No "which model is fastest overall" claim. Generation-behavior diagnostics, benchmark
+  caveats and invalidated results live in
+  [BENCHMARKS §54–59](BENCHMARKS.md); performance comparisons are no longer a homepage claim.
+- **Cache correctness gate is not fully green yet:** Qwen3-4B single-request, concurrent,
+  snapshot-reuse and abort-then-reuse tests match the no-cache path; one multi-turn branch
+  differs by one token at turn 2 (12 vs 13, same input length), stable across repeats.
+  See [BENCHMARKS §58](BENCHMARKS.md). Cache gains stay unclaimed until this is resolved.
+- Decode-only numbers exclude queueing, prefill and first-token wait; do not read them as
+  end-to-end speed.
 
 ### Long system prompts: pre-registration is the differentiator
 

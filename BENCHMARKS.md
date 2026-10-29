@@ -2264,3 +2264,42 @@ Gemma 4 的 64-token 输出并不是“完成了更多工作”，而是**被 nu
 2. **固定输出长度**：双方都可靠支持后再测计算吞吐；不支持就明确保留自然停止测试，
    不包装成纯计算对比。
 3. **Cache 兼容性**：先验证恢复后输出正确、分支不串状态、原始快照不被修改，再测收益。
+
+## 58. 缓存正确性：Qwen3-4B，一条前缀、两个后缀（2026-10-29）
+
+首个缓存正确性验收，不等跨引擎性能。模型 Qwen3-4B-4bit；2k 共享 system prefix；
+cache 路径 `--profile agent --prefix-reuse always` + `/v1/prewarm`，对照路径
+`--no-prefix-cache`；temperature 0，max_tokens 32。
+
+| 检查 | 结果 |
+|---|---|
+| 单请求后缀 A：cache vs no-cache | 内容逐字一致（11 tokens） |
+| 单请求后缀 B：cache vs no-cache | 内容逐字一致（12 tokens） |
+| A 跑过 B 之后再跑 A | 与首次 A 逐字一致（快照未被 B 改写） |
+| 4 并发（A/B/A/B） | 4 条均与串行 cache 和 no-cache 逐字一致 |
+| 长请求 abort 后再跑 A | abort 成功，A 仍逐字一致 |
+| 多轮 A（第 2 轮追加“请再补充一句”） | **不一致**：cache “规范一确保所有回答具有可追溯性和准确性。” vs no-cache “…所有回答都具有…”（12 vs 13 tokens） |
+| 多轮 B | 两轮均逐字一致 |
+
+多轮 A 的不一致重复 3/3，turn-2 输入 tokens 两边都是 2598，说明不是输入长度差异；
+并发检查也没有显示 A/B 串状态。目前看更像“前缀快照 seed 与重新 prefill 的数值路径不同”
+导致 greedy 输出分叉，而不是逻辑污染。**严格标准下缓存正确性尚未全部通过**；在修复/解释
+这个数值分叉前，不把缓存收益当作已验收。
+
+数据/脚本：`bench/cache_correctness_results.json`、`bench/cache_correctness.py`。
+
+## 59. 基准日志协议（待补齐）
+
+下一轮基准必须每请求记录：
+
+- input tokens（prompt_eval/usage）、output tokens、finish_reason；
+- stop 配置、渲染模板 hash、是否 thinking、轮次、每轮是否包含上一轮回答；
+- TTFT、完成延迟、并发/队列状态、模型与运行时配置。
+
+当前限制：
+
+- prompt token 数相同，不代表输入 token 序列或 chat template 完全相同；本轮 Gemma/Qwen4
+  prompt tokens 相同，但模板/停止行为仍不同。
+- Qwen3.5 4B 单请求双方都到 64 上限，只解释了该请求；并发两轮的 1902/1752 差异仍未解释，
+  不因此重跑整个矩阵。
+- 固定输出长度只在双方确实支持等价设置时才测；否则保留自然停止测试，不做纯吞吐比较。

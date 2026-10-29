@@ -25,7 +25,6 @@
       <a href="#progress">Progress</a>
       <a href="#concurrency">Concurrency</a>
       <a href="#bench">Benchmarks</a>
-      <a href="#models">Models</a>
       <a href="#long">Prefix cache</a>
       <a href="#positioning">Positioning</a>
       <a href="#features">Features</a>
@@ -243,51 +242,6 @@
     </div>
   </section>
 
-  <section id="models" aria-labelledby="models-title">
-    <div class="wrap">
-      <div class="section-head">
-        <h2 id="models-title">2026 models: behavior first</h2>
-        <span class="note">no leaderboard · performance positioning closed</span>
-      </div>
-      <p class="section-sub">
-        The previous performance matrix is off the homepage; full numbers, invalidation
-        reasons and old commit references are in the experiment log. Equal token totals do
-        not prove equal work.
-      </p>
-      <div class="grid-2">
-        <div class="card">
-          <span class="tag">What we know</span>
-          <h3>Qwen3.5 0.8B / 2B / 4B</h3>
-          <p>
-            At a 64-token cap all three hit the cap. In the lower-background-load retest,
-            Qwen3.5 0.8B/2B had comparable token totals (2048 vs 2044/2048). Ollama had
-            higher aggregate throughput; Terrazzo had lower TTFT p50 but higher per-request
-            completion p95. The runs were not at an identical background load, so this is
-            directional, not a “fully idle” claim.
-          </p>
-        </div>
-        <div class="card lose">
-          <span class="tag">Not equivalent</span>
-          <h3>Gemma 4 E2B</h3>
-          <p>
-            Same rendered prompt length (2618 tokens), but Terrazzo stops at 31 tokens with a
-            complete clarification request, while Ollama's 64-token answer is truncated
-            (with <span class="mono">num_predict=256</span> it continues to 137 and stops).
-            1136 vs 1994 is a stop/truncation difference, not evidence that Terrazzo finished
-            the same task faster.
-          </p>
-        </div>
-      </div>
-      <p class="callout" style="margin-top:14px">
-        Terrazzo uses the tokenizer chat template; Ollama uses <span class="mono">RENDERER
-        gemma4/qwen3.5</span>. Thinking is off on both. Qwen3.5 ArraysCache / Gemma 4
-        sliding caches still cannot be snapshotted by Terrazzo's prefix cache; how much this
-        contributes is not isolated. Detailed tables and the invalidated results:
-        <a href="https://github.com/louisyeaaah/terrazzo/blob/main/BENCHMARKS.md">BENCHMARKS §54–57</a>.
-      </p>
-    </div>
-  </section>
-
   <section id="long" aria-labelledby="long-title">
     <div class="wrap">
       <div class="section-head">
@@ -366,6 +320,12 @@
         not a drop-in throughput replacement for vLLM at scale. The paged-sharing attempt that would
         have changed the memory story was measured and lost — the numbers are kept in
         <a href="https://github.com/louisyeaaah/terrazzo/blob/main/BENCHMARKS.md">BENCHMARKS</a>.
+      </p>
+      <p class="callout">
+        <b>Supported today:</b> Qwen3 family with the shared-prefix cache and the
+        <span class="mono">agent</span>/<span class="mono">mixed</span> presets. Qwen3.5 and
+        Gemma 4 serve in raw mode; their new cache types cannot be snapshotted yet.
+        Details: <a href="https://github.com/louisyeaaah/terrazzo/blob/main/BENCHMARKS.md">BENCHMARKS §54–59</a>.
       </p>
     </div>
   </section>

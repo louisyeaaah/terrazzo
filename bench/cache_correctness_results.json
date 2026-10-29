@@ -1,0 +1,29 @@
+{
+ "model": "Qwen3-4B-4bit",
+ "prefix_tokens": 2000,
+ "suffixes": [
+  "\u89c4\u8303\u4e00",
+  "\u89c4\u8303\u4e8c"
+ ],
+ "single_turn": {
+  "A": "exact match (11 tokens)",
+  "B": "exact match (12 tokens)"
+ },
+ "snapshot_immutability": "A after B exact match",
+ "concurrent_4": "all exact match vs serial and no-cache",
+ "abort_then_A": "abort true; A exact match",
+ "multi_turn": {
+  "A_turn1": "exact",
+  "A_turn2": "MISMATCH: 12 vs 13 tokens, same 2598 prompt tokens, stable 3/3",
+  "B_turn1": "exact",
+  "B_turn2": "exact"
+ },
+ "verdict": "normal/cancel/concurrent/snapshot pass; multi-turn strict equality fails for A; not fully accepted",
+ "cache_stats": {
+  "entries": 2,
+  "active": 0,
+  "hits": 23,
+  "misses": 0,
+  "stores": 2
+ }
+}
