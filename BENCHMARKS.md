@@ -2384,7 +2384,7 @@ Ollama 仍用服务端 `eval_count/eval_duration`，`prompt_eval_duration` 不�
 - 实际 >0 时只累加实际复用 tokens。
 - 新增 fake-engine 测试断言：重算后 `num_hits=0`、`prefix_hit_tokens=0`。
 
-## 65. 缓存一致性边界：chunked bf16 而非命中逻辑（2026-10-31）
+## 65. 缓存一致性边界：chunked bf16 而非命中逻辑（2026-10-30）
 
 缓存命中长度、实际复用 tokens、分支隔离都已由测试和 `/stats` 验证；剩余差异是
 **cached vs no-cache 的逐字输出**，不是命中逻辑。
@@ -2396,17 +2396,29 @@ Ollama 仍用服务端 `eval_count/eval_duration`，`prompt_eval_duration` 不�
 | Qwen3.5 0.8B / Gemma 4 E2B 单请求 A | 逐字一致 |
 | 两个模型的单请求 B | 不一致；cache 侧与 no-cache 侧各自稳定 |
 | batch=1（prefill/completion 均为 1）重跑 B | **仍不一致**，排除 continuous batching 的合并 |
-| split-prefill vs full-prefill 同一 prompt 的 logits | Qwen3.5 0.8B max abs diff 0.1875；Gemma 4 0.5；Qwen3-4B 0.625（bf16） |
+| 首次分叉（`bench/first_divergence_probe.py`） | 见下表：候选 logits、top1/top2 分差、共同输入历史都保存 |
 | Qwen3-4B 标准 cache 多轮 A 第 2 轮 | cache 12 vs no-cache 13 tokens，输入长度相同且稳定 |
 | Qwen3.5 0.8B no-cache 并发 B vs 串行 B | 并发本身也会改变输出 |
+
+首次分叉记录（同 prompt，split=2432）：
+
+| 模型 | 首次分叉 | split 路径 | full 路径 | 分差 |
+|---|---|---|---|---|
+| Qwen3.5 0.8B | prompt 第 2434 位 | top1 110827，logits 14.0/14.0，margin 0.0 | top1 99986，14.0625/14.0，margin 0.0625 | 精确 top1 打平后翻转 |
+| Qwen3-4B | generation 第 12 步 | EOS (`&#124;im_end&#124;`)，25.25/24.875，margin 0.375 | EOT (`&#124;endoftext&#124;`)，25.25/25.125，margin 0.125 | EOS vs EOT |
+| Gemma 4 E2B | generation 第 17 步 | “请”，18.75/18.75，margin 0.0 | “下一步请”，18.5/18.25，margin 0.25 | top1/top2 打平后翻转 |
+
+共同输入历史、完整 token IDs、top5 logits 在 `bench/first_divergence_results.json`；
+最大绝对 logits 差不是验收阈值，不再单独使用。
 
 结论：
 
 - 前缀 cache 保留的是 KV 复用语义，**不保证跨 prefill/chunk 边界的逐 bit 输出一致**；
   近 tie 的 greedy token（尤其是 EOS/逗号）会被 bf16 累加顺序翻转；
 - 这不是 prefix hit 长度、native 恢复位置或 A/B 串状态；这些路径已有单测和真实模型验证；
-- 因此缓存正确性验收标准改为：实际复用正确、分支隔离、单请求 A 类稳定输出一致；
-  B 类近 tie 输出差异记录为数值边界，不再继续追“逐字一致”；
+- 本轮验收只针对已测场景：实际复用正确、分支隔离、单请求 A 输出一致；B 的首次分叉
+  已定位到具体 top1 tie/EOS 翻转，因此记录为数值边界，但不把“所有 A 都通过、所有 B
+  都是例外”当成通用结论；
 - 若要强求逐字一致，需要固定 prefill chunk 边界/数值路径或改用更高精度，这会牺牲
   当前性能目标，未在本轮实施。
 
@@ -2422,9 +2434,32 @@ Ollama 仍用服务端 `eval_count/eval_duration`，`prompt_eval_duration` 不�
 | 复测（loadavg 5.7，方向性） | 23.3 / 12.73s；18.5 / 17.26s | 19.9 / 22.54s；14.6 / 33.37s |
 
 两次都显示 `4:512` 在 TTFT 上更好，吞吐不低于 `8:512`；completion p95 噪声较大。
-admission cap 8/16/32（同 4:512，loadavg 5.7）：16.3 / 16.4 / 15.8 tok/s，
-completion p95 106.2 / 104.8 / 108.3s。**cap 16 仍是最稳的候选，cap 32 无收益。**
+admission cap 8/16/32（同 4:512，16 会话，loadavg 5.7）：16.3 / 16.4 / 15.8 tok/s，
+completion p95 106.2 / 104.8 / 108.3s。16 个会话最多只有 16 个未完成请求，因此 cap32
+在这组数据里没有被真正压测；不能据此说 cap32 无收益。
+
+补测 40 会话 ×1（4:512，loadavg 3.4–3.8）：
+
+| cap | tok/s | TTFT p50 | completion p95 | peak MB |
+|---:|---:|---:|---:|---:|
+| 16 | 26.5 | 55.84s | 96.44s | 3168 |
+| 32 | 26.9 | 55.74s | 95.11s | 3312 |
+
+cap32 在 40 并发下略好，但差距很小；两者都只是候选，尚不能定最终默认值。高负载下
+仍只作方向性结论。
 
 数据：`bench/batch_sweep_replication.json`、`bench/batch_cap8_results.json`、
-`bench/batch_cap16_results.json`、`bench/batch_cap32_results.json`。高负载下只作方向性结论，
-不宣称最终最优配置。
+`bench/batch_cap16_results.json`、`bench/batch_cap32_results.json`、
+`bench/batch_cap16_40s.json`、`bench/batch_cap32_40s.json`。
+
+### 65.2 Batch harness 隔离
+
+`batch_sweep.py` 现在不继承任何 `TERRAZZO_*` 环境变量（只显式设置 settle/stack 并
+`TERRAZZO_AUTO_CAP=0`）。每次运行从 `/stats` 读取并校验：
+
+- `max_num_seqs` 等于请求的 cap；
+- `executor.completion_batch_size / prefill_batch_size / prefill_step_size` 等于请求值；
+- `auto_concurrency.enabled == False`。
+
+任一不匹配直接失败，不写结果。已在 `TERRAZZO_AUTO_CAP=1` 的污染环境下跑 cap16/40
+验证通过。

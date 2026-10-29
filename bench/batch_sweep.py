@@ -27,7 +27,12 @@ def start(model,port,pbatch,step,max_seqs=None):
          '--prefill-step-size',str(step)]
     if max_seqs is not None:
         cmd += ['--max-num-seqs', str(max_seqs)]
-    env={**os.environ,'TERRAZZO_ADMIT_SETTLE_MS':'50','TERRAZZO_STACK_DUMP':'1'}
+    # Do not inherit experiment toggles such as TERRAZZO_AUTO_CAP from the
+    # caller: a fixed-cap run must actually be fixed.
+    env={k: v for k, v in os.environ.items() if not k.startswith("TERRAZZO_")}
+    env.update({'TERRAZZO_ADMIT_SETTLE_MS': '50',
+                'TERRAZZO_STACK_DUMP': '1',
+                'TERRAZZO_AUTO_CAP': '0'})
     p=subprocess.Popen(cmd,cwd=str(ROOT),stdout=log,stderr=subprocess.STDOUT,env=env)
     base=f'http://127.0.0.1:{port}'
     if not wait(base):
@@ -51,6 +56,7 @@ def main():
     ap.add_argument('--max-num-seqs',type=int,default=None)
     ap.add_argument('--grid',default='8:512,4:512,16:512,8:256,8:1024,4:256')
     ap.add_argument('--out',default=str(ROOT/'bench'/'batch_sweep_results.json'))
+    ap.add_argument('--expected-completion-batch',type=int,default=16)
     args=ap.parse_args(); model=str(Path(args.model).resolve())
     systems,shared=A.build_systems('shared',args.sessions,args.system_tokens)
     rows=[]
@@ -65,8 +71,24 @@ def main():
             s=A.run_workload(srv,systems,args.turns,args.max_tokens,
                              user_template='请总结规范要点 {session}（第 {turn} 轮）')
             wall=time.perf_counter()-t0
+            with urllib.request.urlopen(srv['base']+'/stats', timeout=10) as r:
+                stats=json.loads(r.read().decode())
+            executor=stats.get('executor') or {}
+            auto=stats.get('auto_concurrency') or {}
+            effective={'max_num_seqs':stats.get('max_num_seqs'),
+                       'executor':executor,'auto_concurrency_enabled':auto.get('enabled')}
+            if args.max_num_seqs is not None and stats.get('max_num_seqs') != args.max_num_seqs:
+                raise RuntimeError(f"cap mismatch: requested {args.max_num_seqs}, "
+                                   f"effective {stats.get('max_num_seqs')}")
+            if executor.get('completion_batch_size') != args.expected_completion_batch:
+                raise RuntimeError(f"completion batch mismatch: {executor}")
+            if executor.get('prefill_batch_size') != pb or executor.get('prefill_step_size') != step:
+                raise RuntimeError(f"prefill config mismatch: {executor}")
+            if auto.get('enabled'):
+                raise RuntimeError(f"auto_concurrency unexpectedly enabled: {auto}")
             rows.append({'prefill_batch':pb,'prefill_step':step,
                          'max_num_seqs':args.max_num_seqs,'sessions':args.sessions,
+                         'effective':effective,
                          'wall_s':round(wall,2),'aggregate_tok_s':s['aggregate_tok_s'],
                          'ttft_p50_s':s['ttft_p50_s'],'ttft_p95_s':s['ttft_p95_s'],
                          'completion_p95_s':s['total_p95_s'],'tokens':s['output_tokens'],

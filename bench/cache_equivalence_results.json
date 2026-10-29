@@ -1,5 +1,5 @@
 {
- "date": "2026-10-31",
+ "date": "2026-10-30",
  "question": "cache path vs no-cache path output equality",
  "models": [
   "Qwen3-4B-4bit (standard KVCache)",
@@ -21,17 +21,67 @@
    "B": "punctuation/continuation differs; stable",
    "batch1": "B still differs"
   },
-  "logit_probe": {
-   "split_vs_full_max_abs_bf16": {
-    "qwen3.5-0.8b": 0.1875,
-    "gemma4-e2b": 0.5,
-    "qwen3-4b": 0.625
-   },
-   "first_top1": "same in probe; later greedy stop token can flip"
-  },
   "no_cache_batch_effect": {
    "qwen3.5-0.8b": "concurrent B differs from serial no-cache; batching alone changes output"
   }
  },
- "conclusion": "cache preserves KV reuse semantics but not bitwise text under chunked bf16 prefill; near-tie greedy tokens can flip. Exact output equality is not a valid service invariant across batch/chunk paths."
+ "conclusion": "cache preserves KV reuse semantics but split-prefill vs full-prefill changes bf16 logits; first divergence is recorded with candidate logits/margins, including an exact top1 tie and an EOS-vs-EOT flip. Bitwise equality is not a valid service invariant across chunk paths.",
+ "first_divergence_probe": "bench/first_divergence_probe.py",
+ "first_divergence_results": "bench/first_divergence_results.json",
+ "first_divergence": {
+  "qwen3.5-0.8b": {
+   "stage": "prompt",
+   "position": 2434,
+   "split_top1": [
+    110827,
+    99986
+   ],
+   "split_logits": [
+    14.0,
+    14.0
+   ],
+   "split_margin": 0.0,
+   "full_top1": [
+    99986,
+    110827
+   ],
+   "full_logits": [
+    14.0625,
+    14.0
+   ],
+   "full_margin": 0.0625
+  },
+  "qwen3-4b": {
+   "stage": "generation",
+   "step": 12,
+   "split_top1_text": "<|im_end|>",
+   "full_top1_text": "<|endoftext|>",
+   "split_logits": [
+    25.25,
+    24.875
+   ],
+   "split_margin": 0.375,
+   "full_logits": [
+    25.25,
+    25.125
+   ],
+   "full_margin": 0.125
+  },
+  "gemma4-e2b": {
+   "stage": "generation",
+   "step": 17,
+   "split_top1_text": "请",
+   "full_top1_text": "下一步请",
+   "split_logits": [
+    18.75,
+    18.75
+   ],
+   "split_margin": 0.0,
+   "full_logits": [
+    18.5,
+    18.25
+   ],
+   "full_margin": 0.25
+  }
+ }
 }
