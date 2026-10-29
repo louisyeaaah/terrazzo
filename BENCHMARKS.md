@@ -1848,7 +1848,7 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
   cache 方法是否存在，失败给出明确错误；`TERRAZZO_SKIP_MLX_LM_CHECK=1` 仅用于试验新版本。
 - `docs/COMPATIBILITY.md` 记录测试矩阵与不支持的平台。
 
-**当前测试**：核心 255 个（1 skipped）+ 实验内核 31 个；CI 两个主 job + 手动模型 E2E job（见 workflow）。
+**当前测试**：核心 260 个（1 skipped）+ 实验内核 31 个；CI 两个主 job + 手动模型 E2E job（见 workflow）。
 
 ## 45. Tools / function calling（2026-10-27）
 
@@ -1874,7 +1874,7 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
 
 关键修复：带 tools 时默认 `enable_thinking=false`（原来 `<think>` 把 token 预算吃光，
 128 token 内根本到不了 `<tool_call>`）；OpenAI 报文中 assistant `content:null` 需规范化为空串，
-否则 Jinja 模板抛 `'NoneType' is not iterable`。全套 **255 个核心测试 OK（1 skipped）+ 31 个实验内核测试**（§47 后）。
+否则 Jinja 模板抛 `'NoneType' is not iterable`。全套 **260 个核心测试 OK（1 skipped）+ 31 个实验内核测试**（§47 后）。
 
 ## 47. 残余风险修复（2026-10-27）
 
@@ -1900,8 +1900,8 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
 - Ollama 原生模式默认 `think=false`：qwen3 在 Ollama 默认开启思考会把 content 吃空、多轮历史失真。
 
 **修复后验证（commit `fbbdcb0`）**：
-- 本地：核心 **255 tests（1 skipped）**、实验内核 **31 tests（3 skipped）**、纯 Python（MLX blocked）
-  **158 run / 0 fail / 18 skip**。
+- 本地：核心 **260 tests（1 skipped）**、实验内核 **31 tests（3 skipped）**、纯 Python（MLX blocked）
+  **161 run / 0 fail / 21 skip**。
 - CI（[run 40426254576](https://github.com/louisyeaaah/terrazzo/actions/runs/40426254576)）：
   `Core tests (pure Python, MLX blocked)` ✅、`macOS (MLX) import + tests`（含 Metal kernel 与
   experiments）✅；`Model E2E` 仅在手动 `workflow_dispatch` 时运行（本次按预期 skipped）。
@@ -2324,24 +2324,28 @@ completion batch=16、无前缀缓存、16 会话 ×2 turns ×64。单次运行�
 `--prefill-batch-size` / `--prefill-step-size`，`/stats.executor` 暴露生效值。下一步再做
 候选点的重复验证，再重新看 admission cap；旧模型的 cap4 结论不能直接套到新模型。
 
-## 61. 原生 cache 快照（Qwen3.5 0.8B / Gemma 4 E2B，实验）
+## 61. 原生 cache 快照（边界修复后，实验）
 
 实现：`SharedPrefix.native` 保存每层 `(cache class, cloned state, meta_state)`；
-`_seed_caches` 只在**完整命中已注册前缀**时用 `from_state` 恢复；部分命中直接重算，不做
-hybrid/sliding cache 的任意截断。这样 prewarm 能跑通，但还不是生产功能。
+`register_prefix` 先按 block 对齐裁剪 token 再 prefill；`_seed_caches` 只在**完整命中**
+时用 `from_state` 恢复，部分命中重算。全命中且无后缀时：KVCache 真正回退一个 token；
+原生 cache 直接丢弃 cache 并重算，避免把已处理过的最后 token 再算一次。
 
 | 检查 | Qwen3.5 0.8B | Gemma 4 E2B |
 |---|---|---|
-| prewarm | 2.63s，1 entry，49.6MB | 4.71s，1 entry，29.0MB |
-| 单请求 cache vs no-cache | **不一致**（11 vs21 tokens） | **一致**（11 tokens） |
-| 4 并发分支一致性 | 分支内容稳定；cached vs no-cache 不同 | 分支内容稳定；部分 cached vs no-cache 不同 |
+| prewarm | 2.44s，49.4MB | 4.53s，28.9MB |
+| 单请求 cache vs no-cache | **21 vs 21，逐字一致** | **11 vs 11，逐字一致** |
+| 4 并发 A 分支 | 一致 | 一致 |
+| 4 并发 B 分支 | **不一致**（cache 输出更长） | **不一致**（标点/续写不同） |
 
-结论：原生快照管线能建立、能恢复、并发分支不串内容；但**严格 cached-vs-no-cache
-逐字一致仍未通过**（Qwen 单请求就出现差异）。当前优先查这个数值路径分叉，不宣称缓存
-正确性或收益已验收。数据：`bench/native_cache_results.json`。
+边界修复后单请求一致性从失败变为通过，说明之前的 Qwen 差异至少有一部分来自
+“处理了 2003 tokens、登记 2000”的边界错误，不能笼统归为浮点误差。并发 B 分支仍有
+差异；需继续查 batch/cache merge 的恢复路径，暂不宣称缓存正确性全部通过。
+
+数据：`bench/native_cache_results.json`。
 
 ## 62. Decode 计时口径
 
-见 §55.1。旧 compare_ollama 的 Terrazzo 计时用两次请求相减，Ollama 用服务端
-`eval_duration`，不可直接横比；现已改为同一请求的 first-token 到结束。原始数据：
-`bench/decode_timing_results.json`。
+见 §55.1。Terrazzo 现在用同一请求的 `(n-1)/(last_token_time - first_token_time)`；
+Ollama 仍用服务端 `eval_count/eval_duration`，`prompt_eval_duration` 不能标成 TTFT。
+两边边界仍不完全统一，倍数只作粗略参考。原始数据：`bench/decode_timing_results.json`。

@@ -24,7 +24,8 @@ from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 
 from .blocks import BlockManager, BlockManagerConfig
-from .paged_kv import PagedPrefixCache, SharedPrefix, _clone_state
+from .paged_kv import (PagedPrefixCache, SharedPrefix, _clone_state,
+                       aligned_prefix_length)
 from .scheduler import Scheduler, SchedulerConfig, SchedulerOutputs
 from .sequence import SamplingParams, Sequence, SequenceStatus
 
@@ -571,6 +572,14 @@ class Engine:
         import mlx.core as mx
         from mlx_lm.models.cache import make_prompt_cache
 
+        # Decide the cache boundary BEFORE running any prefill. Native snapshots
+        # cannot be truncated after the fact, so only process the block-aligned
+        # token span that will actually be registered.
+        bs = self.prefix_cache.block_manager.block_size
+        n = aligned_prefix_length(len(token_ids), bs, self.prefix_cache.min_tokens)
+        if n <= 0:
+            return None
+        token_ids = token_ids[:n]
         caches = make_prompt_cache(self.runner.model)
         # registration blocks admission, so use the largest chunk the step budget
         # allows (fewer forwards) instead of the small in-flight prefill chunk

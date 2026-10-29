@@ -1,29 +1,29 @@
 {
- "method": "same-request timing: TTFT from first_token_time, decode = output_tokens/(total-ttft); Ollama eval_duration",
+ "method": "Terrazzo: (n-1)/(last-first token); Ollama: server eval_count/eval_duration; boundaries NOT unified",
  "rows": [
   {
    "model": "Qwen3.5 0.8B",
-   "terrazzo": 200.4,
+   "terrazzo": 199.0,
    "ollama": 121.6,
-   "ratio": 1.65
+   "ratio": 1.64
   },
   {
    "model": "Qwen3.5 2B",
-   "terrazzo": 172.4,
-   "ollama": 117.5,
-   "ratio": 1.47
+   "terrazzo": 167.8,
+   "ollama": 117.6,
+   "ratio": 1.43
   },
   {
    "model": "Qwen3.5 4B",
-   "terrazzo": 91.4,
+   "terrazzo": 88.7,
    "ollama": 61.0,
-   "ratio": 1.5
+   "ratio": 1.45
   },
   {
    "model": "Gemma 4 E2B",
-   "terrazzo": 100.6,
+   "terrazzo": 108.0,
    "ollama": 50.9,
-   "ratio": 1.98
+   "ratio": 2.12
   }
  ]
 }

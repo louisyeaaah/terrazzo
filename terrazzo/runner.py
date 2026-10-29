@@ -125,6 +125,31 @@ class MLXRunner:
             top_k=params.top_k,
         )
 
+    @staticmethod
+    def prepare_full_hit(cache, cached_tokens: int, prompt_tokens: int):
+        """Return (cache, cached_tokens) for a prompt that is fully cached.
+
+        Plain KVCache can be truly rolled back by one token. Native cache types
+        (ArraysCache / sliding-window) cannot be sliced safely, so they are dropped
+        and the prompt is recomputed.
+        """
+        if cache is None or cached_tokens < prompt_tokens:
+            return cache, cached_tokens
+        from mlx_lm.models.cache import KVCache
+
+        if not all(isinstance(c, KVCache) for c in cache):
+            return None, 0
+        keep = cached_tokens - 1
+        if keep < 0:
+            return None, 0
+        for c in cache:
+            if getattr(c, "keys", None) is None or getattr(c, "values", None) is None:
+                return None, 0
+            c.keys = c.keys[..., :keep, :]
+            c.values = c.values[..., :keep, :]
+            c.offset = keep
+        return cache, keep
+
     # ------------------------------------------------------------------- insert
     def insert(
         self,
@@ -136,11 +161,9 @@ class MLXRunner:
         _require_mlx()
         tokens = seq.prompt_token_ids
         if cached_tokens > 0 and cache is not None:
+            cache, cached_tokens = self.prepare_full_hit(
+                cache, cached_tokens, len(tokens))
             rest = tokens[cached_tokens:]
-            if not rest:
-                # everything cached: re-run the final token so sampling can start
-                cached_tokens -= 1
-                rest = tokens[cached_tokens:]
             segments = [[rest]]
             all_tokens = [tokens[:cached_tokens]]
         else:

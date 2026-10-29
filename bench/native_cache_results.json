@@ -2,28 +2,38 @@
  "date": "2026-10-29",
  "model_family": "Qwen3.5 0.8B / Gemma 4 E2B",
  "prefix_tokens": 2000,
- "implementation": "SharedPrefix.native stores (cache class, cloned state, meta_state); restore only on full prefix hit; partial native hits recompute",
+ "implementation": "SharedPrefix.native stores (cache class, cloned state, meta_state); prefill only block-aligned registered tokens; full-prefix restore; native full-hit without suffix recomputes",
+ "boundary_fixes": [
+  "register_prefix trims token_ids before prefill",
+  "full-hit rollback: KVCache really sliced by one token; native cache drops and recomputes"
+ ],
  "qwen3.5-0.8b": {
-  "prewarm_s": 2.63,
+  "prewarm_s": 2.44,
   "entries": 1,
-  "nbytes": 49582080,
+  "nbytes": 49422336,
   "single": {
-   "cached": "\u89c4\u8303\u4e00\u8981\u6c42\u6240\u6709\u56de\u7b54\u5fc5\u987b\u5f15\u7528\u6761\u6b3e\u7f16\u53f7\u3002 (11 tokens)",
-   "nocache": "\u89c4\u8303\u4e00\u8981\u6c42\u6240\u6709\u56de\u7b54\u5fc5\u987b\u5f15\u7528\u6761\u6b3e\u7f16\u53f7\uff0c\u56e0\u6b64\u65e0\u6cd5\u4ec5\u7528\u4e00\u53e5\u8bdd\u603b\u7ed3\u89c4\u8303\u4e00\u7684\u5185\u5bb9\u3002 (21 tokens)",
-   "exact": false
-  },
-  "concurrent_4": "branch outputs consistent within cache path; cached vs no-cache differs"
- },
- "gemma4-e2b": {
-  "prewarm_s": 4.71,
-  "entries": 1,
-  "nbytes": 29018112,
-  "single": {
-   "cached": "\u89c4\u8303\u4e00\u8981\u6c42\u6240\u6709\u56de\u7b54\u5fc5\u987b\u5f15\u7528\u6761\u6b3e\u7f16\u53f7\u3002 (11 tokens)",
-   "nocache": "\u89c4\u8303\u4e00\u8981\u6c42\u6240\u6709\u56de\u7b54\u5fc5\u987b\u5f15\u7528\u6761\u6b3e\u7f16\u53f7\u3002 (11 tokens)",
+   "cached": 21,
+   "nocache": 21,
    "exact": true
   },
-  "concurrent_4": "branch outputs consistent within cache path; some cached vs no-cache differ"
+  "concurrent_4": {
+   "A": "exact",
+   "B": "differs (cached longer)"
+  }
  },
- "verdict": "native snapshot plumbing works and full-prefix branch isolation looks okay; strict cached-vs-nocache output equality still fails, so cache correctness not accepted yet."
+ "gemma4-e2b": {
+  "prewarm_s": 4.53,
+  "entries": 1,
+  "nbytes": 28889088,
+  "single": {
+   "cached": 11,
+   "nocache": 11,
+   "exact": true
+  },
+  "concurrent_4": {
+   "A": "exact",
+   "B": "differs (one punctuation/continuation)"
+  }
+ },
+ "verdict": "boundary fixes make single-request native cache exact for both; concurrent branch B still differs -> full cache correctness not accepted"
 }

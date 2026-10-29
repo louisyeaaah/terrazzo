@@ -9,7 +9,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import mlx.core as mx  # noqa: E402
 
 from terrazzo.blocks import BlockManager, BlockManagerConfig  # noqa: E402
-from terrazzo.paged_kv import PagedKVCache, PagedPrefixCache  # noqa: E402
+from terrazzo.paged_kv import (PagedKVCache, PagedPrefixCache,  # noqa: E402
+                               aligned_prefix_length)
 
 
 def fake_layers(n_tokens: int, layers: int = 2, heads: int = 2, dim: int = 4):
@@ -166,3 +167,22 @@ class PagedKVCacheTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PrefixBoundaryTest(unittest.TestCase):
+    def test_non_block_aligned_length_is_rounded_down(self):
+        self.assertEqual(aligned_prefix_length(2003, 16), 2000)
+        self.assertEqual(aligned_prefix_length(2003, 16, min_tokens=2001), 0)
+        self.assertEqual(aligned_prefix_length(15, 16), 0)
+
+    def test_native_store_keeps_declared_block_aligned_tokens(self):
+        bm = BlockManager(BlockManagerConfig(num_blocks=256, block_size=16))
+        pc = PagedPrefixCache(bm, max_entries=2, max_bytes=1 << 30)
+        tokens = list(range(2000))
+        layers = fake_layers(2000)
+        native = [(type("FakeNative", (), {}), [mx.ones((1, 4))], "")]
+        entry = pc.store(tokens, layers, native=native)
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry.num_tokens, 2000)
+        self.assertEqual(len(entry.tokens), 2000)
+        self.assertIsNotNone(entry.native)

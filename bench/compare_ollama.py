@@ -46,12 +46,15 @@ def measure_ollama(base: str, model: str, prompt: str, max_tokens: int, ctx: int
         ev = d.get("eval_duration", 1) / 1e9
         runs.append({
             "eval_count": d.get("eval_count"),
+            "decode_s": ev,
             "decode_tok_s": d.get("eval_count", 0) / max(1e-9, ev),
-            "ttft_s": d.get("prompt_eval_duration", 0) / 1e9,
+            "prompt_eval_s": d.get("prompt_eval_duration", 0) / 1e9,
         })
     return {"runs": runs,
             "decode_tok_s": sorted(r["decode_tok_s"] for r in runs)[len(runs) // 2],
-            "ttft_s": runs[0]["ttft_s"]}
+            "decode_tokens": runs[0]["eval_count"],
+            "decode_s": runs[0]["decode_s"],
+            "prompt_eval_s": runs[0]["prompt_eval_s"]}
 
 
 def measure_engine(model: str, prompt: str, max_tokens: int) -> dict:
@@ -74,22 +77,31 @@ def measure_engine(model: str, prompt: str, max_tokens: int) -> dict:
         t0 = time.perf_counter()
         seq = eng.add_request(prompt_token_ids=ids,
                               params=SamplingParams(max_tokens=max_tokens, temperature=0.0))
+        prev = 0
+        first_t = last_t = None
         while not seq.status.is_finished:
             eng.step()
-        total = time.perf_counter() - t0
-        # first_token_time is an absolute perf_counter timestamp recorded by the
-        # sequence itself, so TTFT and decode come from the same request.
-        ttft = (seq.first_token_time - t0) if seq.first_token_time is not None else total
+            n = len(seq.output_token_ids)
+            if n > prev:
+                now = time.perf_counter()
+                if first_t is None:
+                    first_t = now
+                last_t = now
+                prev = n
         n = len(seq.output_token_ids)
-        decode_s = max(1e-6, total - ttft)
+        decode_s = (last_t - first_t) if (first_t is not None and last_t is not None) else 0.0
         runs.append({"decode_tokens": n,
                      "decode_s": round(decode_s, 4),
-                     "decode_tok_s": n / decode_s,
-                     "ttft_s": ttft})
+                     # first token is not part of the inter-token interval
+                     "decode_tok_s": ((n - 1) / decode_s) if n >= 2 and decode_s > 0 else None,
+                     "first_token_s": (first_t - t0) if first_t is not None else None})
     eng.close()
+    valid = [r["decode_tok_s"] for r in runs if r["decode_tok_s"] is not None]
     return {"runs": runs,
-            "decode_tok_s": sorted(r["decode_tok_s"] for r in runs)[len(runs) // 2],
-            "ttft_s": runs[0]["ttft_s"]}
+            "decode_tok_s": (sorted(valid)[len(valid) // 2] if valid else None),
+            "decode_tokens": runs[0]["decode_tokens"],
+            "decode_s": runs[0]["decode_s"],
+            "first_token_s": runs[0]["first_token_s"]}
 
 
 def main() -> int:
@@ -112,14 +124,23 @@ def main() -> int:
     rows = [
         {"engine": f"ollama:{args.ollama_model}", "num_ctx": args.num_ctx,
          "decode_tok_s": round(ollama["decode_tok_s"], 1),
-         "ttft_s": round(ollama["ttft_s"], 3)},
+         "decode_tokens": ollama["decode_tokens"],
+         "decode_s": round(ollama["decode_s"], 4),
+         "prompt_eval_s": round(ollama["prompt_eval_s"], 3),
+         "timing_source": "server eval_count/eval_duration"},
         {"engine": "terrazzo", "num_ctx": None,
-         "decode_tok_s": round(engine["decode_tok_s"], 1),
-         "ttft_s": round(engine["ttft_s"], 3)},
+         "decode_tok_s": (round(engine["decode_tok_s"], 1)
+                          if engine["decode_tok_s"] is not None else None),
+         "decode_tokens": engine["decode_tokens"],
+         "decode_s": engine["decode_s"],
+         "first_token_s": (round(engine["first_token_s"], 3)
+                           if engine["first_token_s"] is not None else None),
+         "timing_source": "(n-1)/(last_token-first_token)"},
     ]
     print(json.dumps(rows, ensure_ascii=False), flush=True)
-    print(f"ratio (ours / ollama): {rows[1]['decode_tok_s'] / rows[0]['decode_tok_s']:.2f}x",
-          flush=True)
+    if rows[0]["decode_tok_s"] and rows[1]["decode_tok_s"]:
+        print(f"rough cross-check (different timing boundaries), ours/ollama: "
+              f"{rows[1]['decode_tok_s'] / rows[0]['decode_tok_s']:.2f}x", flush=True)
     return 0
 
 

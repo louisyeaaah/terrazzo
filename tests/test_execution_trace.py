@@ -289,3 +289,89 @@ class LifecycleTest(unittest.TestCase):
         self.assertEqual(q.get(timeout=1)["finish_reason"], "error")
         with self.assertRaises(RuntimeError):
             e.add_request(prompt_token_ids=[1], params=SamplingParams(max_tokens=1))
+
+
+    def test_prepare_full_hit_kv_rolls_back_one_token(self):
+        import mlx.core as mx
+        from mlx_lm.models.cache import KVCache
+        from terrazzo.runner import MLXRunner
+        runner = MLXRunner.__new__(MLXRunner)
+        c = KVCache()
+        c.keys = mx.ones((1, 1, 8, 4))
+        c.values = mx.ones((1, 1, 8, 4))
+        c.offset = 8
+        cache, keep = runner.prepare_full_hit([c], 8, 8)
+        self.assertEqual(keep, 7)
+        self.assertIs(cache[0], c)
+        self.assertEqual(c.offset, 7)
+        self.assertEqual(c.keys.shape[2], 7)
+        # with a suffix (partial prompt hit), keep the cache unchanged
+        cache2, keep2 = runner.prepare_full_hit([c], 7, 8)
+        self.assertEqual(keep2, 7)
+        self.assertIs(cache2[0], c)
+        # native cache cannot be safely sliced -> recompute
+        class Native:
+            pass
+        cache3, keep3 = runner.prepare_full_hit([Native()], 8, 8)
+        self.assertIsNone(cache3)
+        self.assertEqual(keep3, 0)
+
+
+    def test_register_prefix_trims_before_prefill(self):
+        import types
+        from unittest.mock import patch
+        import mlx.core as mx
+        from terrazzo.blocks import BlockManager, BlockManagerConfig
+        from terrazzo.paged_kv import PagedPrefixCache
+
+        e = Engine.__new__(Engine)
+        e.cfg = types.SimpleNamespace(prefill_chunk_size=512,
+                                      max_num_batched_tokens=2048)
+        e.prefix_cache = PagedPrefixCache(
+            BlockManager(BlockManagerConfig(num_blocks=512, block_size=16)),
+            max_entries=2, max_bytes=1 << 30)
+        seen = []
+        class FakeModel:
+            def __call__(self, arr, cache=None):
+                seen.append(arr.shape[1])
+                return mx.zeros((1, 1))
+        e.runner = types.SimpleNamespace(model=FakeModel())
+        class FakeCache:
+            state = []
+            meta_state = ""
+        with patch("mlx_lm.models.cache.make_prompt_cache", return_value=[FakeCache()]):
+            prefix = e.register_prefix(list(range(2003)))
+        self.assertEqual(seen, [2000])  # prefill never saw the partial block
+        self.assertIsNotNone(prefix)
+        self.assertEqual(prefix.num_tokens, 2000)
+        self.assertEqual(len(prefix.tokens), 2000)
+        self.assertIsNotNone(prefix.native)
+
+    def test_insert_full_hit_replays_last_token(self):
+        import types
+        import mlx.core as mx
+        from mlx_lm.models.cache import KVCache
+        from terrazzo.runner import MLXRunner
+        r = MLXRunner.__new__(MLXRunner)
+        r.uid_to_seq = {}
+        calls = []
+        class FakeBG:
+            def insert_segments(self, **kw):
+                calls.append(kw)
+                return (7,)
+        r.bg = FakeBG()
+        seq = Sequence(request_id="x", prompt_token_ids=list(range(8)),
+                       sampling_params=SamplingParams(max_tokens=4))
+        c = KVCache()
+        c.keys = mx.ones((1, 1, 8, 4)); c.values = mx.ones((1, 1, 8, 4)); c.offset = 8
+        r.insert(seq, cache=[c], cached_tokens=8)
+        self.assertEqual(calls[0]["segments"], [[[7]]])
+        self.assertEqual(calls[0]["all_tokens"], [[0,1,2,3,4,5,6]])
+        self.assertEqual(c.offset, 7)
+        # native full hit must recompute the whole prompt
+        calls.clear()
+        class Native: pass
+        r.insert(seq, cache=[Native()], cached_tokens=8)
+        self.assertEqual(calls[0]["segments"], [[list(range(8))]])
+        self.assertEqual(calls[0]["all_tokens"], [[]])
+        self.assertEqual(calls[0]["caches"], [None])

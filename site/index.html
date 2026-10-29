@@ -88,9 +88,9 @@
           <div class="x">2.2× Ollama (40.6)</div>
         </div>
         <div class="stat" style="--accent: var(--green)">
-          <div class="k">255 <small>+ 31 tests</small></div>
+          <div class="k">260 <small>+ 31 tests</small></div>
           <div class="l">core + experimental kernels</div>
-          <div class="x">CI green · 158 pure-Python</div>
+          <div class="x">CI green · 161 pure-Python</div>
         </div>
       </div>
       <div class="callout">
@@ -114,7 +114,7 @@
         <div class="t-item"><div class="d">SERVE</div><h4>Prefix cache + APIs</h4><p>Exact shared-prefix snapshots, <span class="mono">/v1/prewarm</span>, OpenAI + Ollama endpoints, CLI and Modelfile.</p></div>
         <div class="t-item"><div class="d">AGENT FIX</div><h4>16-session TTFT</h4><p>Pre-registration + <span class="mono">--profile agent</span> cut p50 first-token latency from <b>8–11 s to 2.56 s</b> at 16 sessions.</p></div>
         <div class="t-item"><div class="d">PRODUCTIZE</div><h4>v0.3.0 → Terrazzo</h4><p>Model store, <span class="mono">terrazzo</span> CLI, dual-language docs, pinned dependencies and head-to-head benchmarks.</p></div>
-        <div class="t-item"><div class="d">HARDEN</div><h4>Review-driven reliability</h4><p>Request deadlines, body/concurrency limits, HTTP hardening, hang watchdog, TLS, <b>255 core + 31 kernel tests</b>, Linux + macOS CI.</p></div>
+        <div class="t-item"><div class="d">HARDEN</div><h4>Review-driven reliability</h4><p>Request deadlines, body/concurrency limits, HTTP hardening, hang watchdog, TLS, <b>260 core + 31 kernel tests</b>, Linux + macOS CI.</p></div>
         <div class="t-item"><div class="d">MEASURE</div><h4>Honest re-measurement</h4><p>Quiet-machine rerun with true token counts: <b>1.51×</b> Ollama decode, <b>2.2×</b> agent throughput; vLLM-Metal leads at 16 sessions.</p></div>
       </div>
     </div>
@@ -359,7 +359,7 @@
         </div>
         <div class="feature">
           <span class="ico terra" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5 3 12l5 7M16 5l5 7-5 7M14 4l-4 16"/></svg></span>
-          <div><h4>Boring reliability</h4><p>255 core tests + 31 kernel tests, MLX-free CI job, pinned MLX versions, validated runtime-patch contract.</p></div>
+          <div><h4>Boring reliability</h4><p>260 core tests + 31 kernel tests, MLX-free CI job, pinned MLX versions, validated runtime-patch contract.</p></div>
         </div>
       </div>
     </div>
@@ -439,9 +439,9 @@ curl localhost:8080/api/chat -d '{
         <h2 id="val-title">Verification</h2>
       </div>
       <div class="validation">
-        <div class="vcard"><div class="n">core suite</div><div class="v">255</div><div class="s">tests, 1 skipped (needs a model)</div><a href="https://github.com/louisyeaaah/terrazzo/actions/workflows/ci.yml">CI history ↗</a></div>
+        <div class="vcard"><div class="n">core suite</div><div class="v">260</div><div class="s">tests, 1 skipped (needs a model)</div><a href="https://github.com/louisyeaaah/terrazzo/actions/workflows/ci.yml">CI history ↗</a></div>
         <div class="vcard"><div class="n">experimental kernels</div><div class="v">31</div><div class="s">tests, 3 skipped</div><a href="https://github.com/louisyeaaah/terrazzo/tree/main/experiments">experiments ↗</a></div>
-        <div class="vcard"><div class="n">pure Python, MLX blocked</div><div class="v">158</div><div class="s">tests run on Linux CI</div><a href="https://github.com/louisyeaaah/terrazzo/actions/workflows/ci.yml">workflow runs ↗</a></div>
+        <div class="vcard"><div class="n">pure Python, MLX blocked</div><div class="v">161</div><div class="s">tests run on Linux CI</div><a href="https://github.com/louisyeaaah/terrazzo/actions/workflows/ci.yml">workflow runs ↗</a></div>
         <div class="vcard"><div class="n">CI jobs</div><div class="v">3</div><div class="s">Linux, macOS+Metal, manual model E2E</div><a href="https://github.com/louisyeaaah/terrazzo/actions">actions ↗</a></div>
       </div>
       <p class="callout">

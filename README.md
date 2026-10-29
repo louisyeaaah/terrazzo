@@ -80,16 +80,18 @@ steady state as well.
 
 - **Prefix-cache path (supported):** Qwen3 family (tested with Qwen3-4B) with
   `--profile agent` / `--profile mixed`. This is the production path.
-- **Experimental native snapshot:** Qwen3.5 / Gemma 4 can now prewarm and restore native
-  full-prefix cache state (ArraysCache / RotatingKVCache), but strict cached-vs-no-cache
-  output equality still fails in the initial tests. They are not production presets yet.
+- **Experimental native snapshot:** Qwen3.5 / Gemma 4 can prewarm and restore native
+  full-prefix cache state (ArraysCache / RotatingKVCache). After fixing the block-boundary
+  and full-hit rollback bugs, single-request cache/no-cache output is now exact; concurrent
+  branch B still differs, so this is not a production preset yet.
 - No "which model is fastest overall" claim. Generation-behavior diagnostics, benchmark
   caveats and invalidated results live in
   [BENCHMARKS §54–62](BENCHMARKS.md); performance comparisons are no longer a homepage claim.
 - **Cache correctness gate is not fully green yet:** Qwen3-4B single-request, concurrent,
-  snapshot-reuse and abort-then-reuse match the no-cache path; one multi-turn branch differs
-  by one token at turn 2. Qwen3.5 native snapshots also differ from no-cache on a single
-  request. See [BENCHMARKS §58–62](BENCHMARKS.md). Cache gains stay unclaimed until resolved.
+  snapshot-reuse and abort-then-reuse match no-cache, but one multi-turn branch differs by
+  one token. Native Qwen3.5/Gemma 4 snapshots are exact for a single request after the
+  boundary fix; one concurrent branch still differs. See
+  [BENCHMARKS §58–62](BENCHMARKS.md). Cache gains stay unclaimed until resolved.
 - Decode-only numbers exclude queueing, prefill and first-token wait; do not read them as
   end-to-end speed.
 
@@ -273,7 +275,7 @@ BENCHMARKS.md      every measurement, including the ones that lost
 ## Tests and benchmarks
 
 ```bash
-python -m unittest discover -s tests                  # core suite (255 tests, 1 skipped)
+python -m unittest discover -s tests                  # core suite (260 tests, 1 skipped)
 python -m unittest discover -s experiments/tests -v   # experimental kernels (31 tests)
 python scripts/ci_core_tests.py                       # pure-Python subset with MLX blocked
 bash bench/head_to_head.sh                            # Ollama head-to-head

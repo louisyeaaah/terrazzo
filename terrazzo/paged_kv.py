@@ -41,6 +41,13 @@ from .blocks import BlockManager
 # --------------------------------------------------------------------------- #
 # shared prefix
 # --------------------------------------------------------------------------- #
+def aligned_prefix_length(num_tokens: int, block_size: int,
+                          min_tokens: int = 0) -> int:
+    """Block-aligned prefix length that can actually be registered."""
+    n = (int(num_tokens) // int(block_size)) * int(block_size)
+    return n if n >= int(min_tokens) else 0
+
+
 def _state_nbytes(value) -> int:
     if isinstance(value, mx.array):
         return value.nbytes
@@ -155,8 +162,8 @@ class PagedPrefixCache:
               native: list | None = None) -> SharedPrefix | None:
         """Register a block-aligned prefix (mutates nothing if it cannot fit)."""
         bs = self.block_manager.block_size
-        n = (len(prompt_tokens) // bs) * bs
-        if n < self.min_tokens:
+        n = aligned_prefix_length(len(prompt_tokens), bs, self.min_tokens)
+        if n <= 0:
             return None
         tokens = tuple(prompt_tokens[:n])
         if tokens in self.entries:
