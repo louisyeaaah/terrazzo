@@ -1,0 +1,118 @@
+{
+ "timestamp": "2026-10-29T14:22:53+1100",
+ "model": "/Users/yezhipeng/project/dsh-other/terrazzo/.hf-models/qwen3.5-2b",
+ "args": {
+  "model": ".hf-models/qwen3.5-2b",
+  "sessions": 16,
+  "turns": 2,
+  "max_tokens": 64,
+  "system_tokens": 2000,
+  "port_base": 9130,
+  "grid": "8:512,4:512,16:512,8:256,8:1024,4:256",
+  "out": "bench/batch_sweep_results.json"
+ },
+ "rows": [
+  {
+   "prefill_batch": 8,
+   "prefill_step": 512,
+   "sessions": 16,
+   "wall_s": 63.09,
+   "aggregate_tok_s": 32.5,
+   "ttft_p50_s": 14.477,
+   "ttft_p95_s": 28.706,
+   "completion_p95_s": 45.865,
+   "tokens": 2048,
+   "mlx_peak_mb": 5327.9,
+   "loadavg": [
+    1.69873046875,
+    2.1591796875,
+    2.50439453125
+   ]
+  },
+  {
+   "prefill_batch": 4,
+   "prefill_step": 512,
+   "sessions": 16,
+   "wall_s": 63.19,
+   "aggregate_tok_s": 32.4,
+   "ttft_p50_s": 9.176,
+   "ttft_p95_s": 28.549,
+   "completion_p95_s": 52.92,
+   "tokens": 2048,
+   "mlx_peak_mb": 3228.1,
+   "loadavg": [
+    1.72705078125,
+    2.087890625,
+    2.44921875
+   ]
+  },
+  {
+   "prefill_batch": 16,
+   "prefill_step": 512,
+   "sessions": 16,
+   "wall_s": 65.14,
+   "aggregate_tok_s": 31.4,
+   "ttft_p50_s": 14.8,
+   "ttft_p95_s": 30.032,
+   "completion_p95_s": 47.584,
+   "tokens": 2048,
+   "mlx_peak_mb": 5327.9,
+   "loadavg": [
+    1.501953125,
+    1.9716796875,
+    2.3779296875
+   ]
+  },
+  {
+   "prefill_batch": 8,
+   "prefill_step": 256,
+   "sessions": 16,
+   "wall_s": 63.73,
+   "aggregate_tok_s": 32.1,
+   "ttft_p50_s": 16.156,
+   "ttft_p95_s": 28.32,
+   "completion_p95_s": 43.568,
+   "tokens": 2048,
+   "mlx_peak_mb": 4924.7,
+   "loadavg": [
+    1.57958984375,
+    1.91015625,
+    2.3212890625
+   ]
+  },
+  {
+   "prefill_batch": 8,
+   "prefill_step": 1024,
+   "sessions": 16,
+   "wall_s": 76.88,
+   "aggregate_tok_s": 26.6,
+   "ttft_p50_s": 18.816,
+   "ttft_p95_s": 35.755,
+   "completion_p95_s": 57.575,
+   "tokens": 2048,
+   "mlx_peak_mb": 6079.6,
+   "loadavg": [
+    1.48291015625,
+    1.7841796875,
+    2.2333984375
+   ]
+  },
+  {
+   "prefill_batch": 4,
+   "prefill_step": 256,
+   "sessions": 16,
+   "wall_s": 65.93,
+   "aggregate_tok_s": 31.1,
+   "ttft_p50_s": 9.082,
+   "ttft_p95_s": 29.712,
+   "completion_p95_s": 55.197,
+   "tokens": 2048,
+   "mlx_peak_mb": 3023.3,
+   "loadavg": [
+    0.94482421875,
+    1.580078125,
+    2.12109375
+   ]
+  }
+ ]
+}

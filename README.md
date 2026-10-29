@@ -80,16 +80,16 @@ steady state as well.
 
 - **Prefix-cache path (supported):** Qwen3 family (tested with Qwen3-4B) with
   `--profile agent` / `--profile mixed`. This is the production path.
-- **Raw path only:** Qwen3.5 and Gemma 4 2026 models run, but their hybrid/sliding-window
-  caches cannot be snapshotted by the current dense-KV prefix cache. They are not part of
-  the production preset story yet.
+- **Experimental native snapshot:** Qwen3.5 / Gemma 4 can now prewarm and restore native
+  full-prefix cache state (ArraysCache / RotatingKVCache), but strict cached-vs-no-cache
+  output equality still fails in the initial tests. They are not production presets yet.
 - No "which model is fastest overall" claim. Generation-behavior diagnostics, benchmark
   caveats and invalidated results live in
-  [BENCHMARKS §54–59](BENCHMARKS.md); performance comparisons are no longer a homepage claim.
+  [BENCHMARKS §54–62](BENCHMARKS.md); performance comparisons are no longer a homepage claim.
 - **Cache correctness gate is not fully green yet:** Qwen3-4B single-request, concurrent,
-  snapshot-reuse and abort-then-reuse tests match the no-cache path; one multi-turn branch
-  differs by one token at turn 2 (12 vs 13, same input length), stable across repeats.
-  See [BENCHMARKS §58](BENCHMARKS.md). Cache gains stay unclaimed until this is resolved.
+  snapshot-reuse and abort-then-reuse match the no-cache path; one multi-turn branch differs
+  by one token at turn 2. Qwen3.5 native snapshots also differ from no-cache on a single
+  request. See [BENCHMARKS §58–62](BENCHMARKS.md). Cache gains stay unclaimed until resolved.
 - Decode-only numbers exclude queueing, prefill and first-token wait; do not read them as
   end-to-end speed.
 

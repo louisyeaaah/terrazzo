@@ -24,7 +24,7 @@ from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 
 from .blocks import BlockManager, BlockManagerConfig
-from .paged_kv import PagedPrefixCache, SharedPrefix
+from .paged_kv import PagedPrefixCache, SharedPrefix, _clone_state
 from .scheduler import Scheduler, SchedulerConfig, SchedulerOutputs
 from .sequence import SamplingParams, Sequence, SequenceStatus
 
@@ -446,7 +446,12 @@ class Engine:
                     decision = self.cost_model.estimate(
                         seq.prompt_len, cached_tokens, prefix.nbytes,
                         policy=self.cfg.prefix_reuse)
-                    if decision.reuse:
+                    # Native (ArraysCache / sliding-window) snapshots are only
+                    # usable on a full registered-prefix hit. A partial hit must
+                    # recompute rather than seeding a partial state.
+                    native_partial = (prefix.native is not None
+                                      and cached_tokens != prefix.num_tokens)
+                    if decision.reuse and not native_partial:
                         # consume the hit (stats + LRU) only when we actually reuse it
                         confirmed = self.prefix_cache.lookup(seq.prompt_token_ids)
                         if confirmed is not None:
@@ -520,15 +525,21 @@ class Engine:
                 c["steps_with_mismatch"] += 1
 
     def _seed_caches(self, prefix: SharedPrefix, hit_len: int) -> list:
-        """Per-layer MLX KVCache objects pre-seeded with the shared prefix.
+        """Per-layer caches pre-seeded with the shared prefix.
 
-        mlx-lm's continuous batcher works on dense per-layer caches, so this makes
-        the prefix usable *inside* the batching path at the cost of a copy on the
-        first growth step (see DESIGN.md: memory sharing survives only in the
-        sequential paged path).
+        Dense K/V entries support partial block-aligned hits. Native snapshots
+        (ArraysCache / RotatingKVCache / ...) are restored only on a full prefix
+        hit; arbitrary truncation of hybrid/sliding caches is not supported yet.
         """
         from mlx_lm.models.cache import KVCache
 
+        if prefix.native:
+            if hit_len != prefix.num_tokens:
+                return []
+            restored = []
+            for cls, state, meta in prefix.native:
+                restored.append(cls.from_state(_clone_state(state), meta))
+            return restored
         caches = []
         for k, v in prefix.layers:
             c = KVCache()
@@ -537,6 +548,21 @@ class Engine:
             c.offset = hit_len
             caches.append(c)
         return caches
+
+    @staticmethod
+    def _native_snapshot(caches) -> list | None:
+        """Capture native cache state only when the model is not plain KVCache."""
+        from mlx_lm.models.cache import KVCache
+
+        if all(isinstance(c, KVCache) for c in caches):
+            return None
+        snapshots = []
+        for c in caches:
+            try:
+                snapshots.append((type(c), _clone_state(c.state), c.meta_state))
+            except Exception:
+                return None
+        return snapshots
 
     def register_prefix(self, token_ids: list[int]) -> SharedPrefix | None:
         """Precompute a shared prefix so later requests skip prefilling it."""
@@ -555,6 +581,9 @@ class Engine:
             piece = token_ids[start:start + chunk]
             logits = self.runner.model(mx.array([piece]), cache=caches)
             mx.eval(logits)
+        native = self._native_snapshot(caches)
+        if native is not None:
+            return self.prefix_cache.store(token_ids, [], native=native)
         layers = [(c.keys[..., : c.offset, :], c.values[..., : c.offset, :]) for c in caches]
         return self.prefix_cache.store(token_ids, layers)
 
@@ -792,6 +821,9 @@ class Engine:
                                   "reuse_policy": self.cfg.prefix_reuse}
         st["scheduler_policy"] = self.cfg.scheduler_policy
         st["max_num_seqs"] = self.scheduler.cfg.max_num_seqs
+        st["executor"] = {"completion_batch_size": self.cfg.completion_batch_size,
+                          "prefill_batch_size": self.cfg.prefill_batch_size,
+                          "prefill_step_size": self.cfg.prefill_chunk_size}
         st["concurrency_changes"] = list(self.concurrency_changes)
         st["request_stages"] = dict(self.request_stages)
         st["cost_model"] = self.cost_model.stats()

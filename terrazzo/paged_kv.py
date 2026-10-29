@@ -41,6 +41,27 @@ from .blocks import BlockManager
 # --------------------------------------------------------------------------- #
 # shared prefix
 # --------------------------------------------------------------------------- #
+def _state_nbytes(value) -> int:
+    if isinstance(value, mx.array):
+        return value.nbytes
+    if isinstance(value, (list, tuple)):
+        return sum(_state_nbytes(v) for v in value)
+    return 0
+
+
+def _clone_state(value):
+    """Detach a cache state from its live owner.
+
+    MLX arrays are immutable from Python's perspective; adding zero forces a new
+    array for the snapshot while preserving dtype/shape.
+    """
+    if isinstance(value, mx.array):
+        return value + mx.zeros_like(value)
+    if isinstance(value, list):
+        return [_clone_state(v) for v in value]
+    if isinstance(value, tuple):
+        return tuple(_clone_state(v) for v in value)
+    return value
 @dataclass
 class SharedPrefix:
     """A frozen KV prefix shared by any number of sequences."""
@@ -49,7 +70,10 @@ class SharedPrefix:
     num_tokens: int
     # per layer: (keys, values) shaped [1, n_kv_heads, num_tokens, head_dim]
     layers: list[tuple[mx.array, mx.array]]
-    block_ids: list[int]
+    # optional native per-layer cache snapshots for non-dense-KV caches:
+    # list of (cache_class, state, meta_state). When present, layers may be empty.
+    native: list | None = None
+    block_ids: list[int] = field(default_factory=list)
     block_hashes: tuple[int, ...] = ()
     ref_count: int = 1          # the cache itself holds one reference
     active: int = 0             # sequences currently attached
@@ -58,6 +82,8 @@ class SharedPrefix:
 
     @property
     def nbytes(self) -> int:
+        if self.native:
+            return _state_nbytes([st for _cls, st, _meta in self.native])
         return sum(k.nbytes + v.nbytes for k, v in self.layers)
 
 
@@ -125,7 +151,8 @@ class PagedPrefixCache:
         return best
 
     # ------------------------------------------------------------------- store
-    def store(self, prompt_tokens: list[int], layers: list[tuple[mx.array, mx.array]]) -> SharedPrefix | None:
+    def store(self, prompt_tokens: list[int], layers: list[tuple[mx.array, mx.array]],
+              native: list | None = None) -> SharedPrefix | None:
         """Register a block-aligned prefix (mutates nothing if it cannot fit)."""
         bs = self.block_manager.block_size
         n = (len(prompt_tokens) // bs) * bs
@@ -142,7 +169,7 @@ class PagedPrefixCache:
         # detach from the generation buffer: slices keep their parent alive
         frozen = [(mx.contiguous(k[..., :n, :]), mx.contiguous(v[..., :n, :])) for k, v in layers]
         entry = SharedPrefix(
-            tokens=tokens, num_tokens=n, layers=frozen,
+            tokens=tokens, num_tokens=n, layers=frozen, native=native,
             block_ids=block_ids, block_hashes=hashes,
         )
         self.entries[tokens] = entry

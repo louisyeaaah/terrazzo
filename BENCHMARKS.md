@@ -2303,3 +2303,45 @@ cache 路径 `--profile agent --prefix-reuse always` + `/v1/prewarm`，对照路
 - Qwen3.5 4B 单请求双方都到 64 上限，只解释了该请求；并发两轮的 1902/1752 差异仍未解释，
   不因此重跑整个矩阵。
 - 固定输出长度只在双方确实支持等价设置时才测；否则保留自然停止测试，不做纯吞吐比较。
+
+
+## 60. 执行器 batch 小范围扫描（Qwen3.5 2B，2026-10-29）
+
+只改 `BatchGenerator` 的 `prefill_batch_size` / `prefill_step_size`；固定 admission cap=16、
+completion batch=16、无前缀缓存、16 会话 ×2 turns ×64。单次运行，loadavg 2.4。
+
+| prefill batch | step | tok/s | TTFT p50 | TTFT p95 | completion p95 | peak MB |
+|---:|---:|---:|---:|---:|---:|---:|
+| 8 (default) | 512 | 32.5 | 14.48s | 28.71s | 45.87s | 5328 |
+| 4 | 512 | 32.4 | **9.18s** | 28.55s | 52.92s | **3228** |
+| 16 | 512 | 31.4 | 14.80s | 30.03s | 47.58s | 5328 |
+| 8 | 256 | 32.1 | 16.16s | 28.32s | **43.57s** | 4925 |
+| 8 | 1024 | 26.6 | 18.82s | 35.76s | 57.58s | 6080 |
+| 4 | 256 | 31.1 | **9.08s** | 29.71s | 55.20s | 3023 |
+
+初步取舍：`4:512` 降 TTFT/内存但完成 p95 略差；`8:512` 吞吐/p95 更均衡；`8:1024` 明显变差。
+这是静态执行器参数，不代表 scheduler 能逐步控制 prefill 预算。CLI 已加
+`--prefill-batch-size` / `--prefill-step-size`，`/stats.executor` 暴露生效值。下一步再做
+候选点的重复验证，再重新看 admission cap；旧模型的 cap4 结论不能直接套到新模型。
+
+## 61. 原生 cache 快照（Qwen3.5 0.8B / Gemma 4 E2B，实验）
+
+实现：`SharedPrefix.native` 保存每层 `(cache class, cloned state, meta_state)`；
+`_seed_caches` 只在**完整命中已注册前缀**时用 `from_state` 恢复；部分命中直接重算，不做
+hybrid/sliding cache 的任意截断。这样 prewarm 能跑通，但还不是生产功能。
+
+| 检查 | Qwen3.5 0.8B | Gemma 4 E2B |
+|---|---|---|
+| prewarm | 2.63s，1 entry，49.6MB | 4.71s，1 entry，29.0MB |
+| 单请求 cache vs no-cache | **不一致**（11 vs21 tokens） | **一致**（11 tokens） |
+| 4 并发分支一致性 | 分支内容稳定；cached vs no-cache 不同 | 分支内容稳定；部分 cached vs no-cache 不同 |
+
+结论：原生快照管线能建立、能恢复、并发分支不串内容；但**严格 cached-vs-no-cache
+逐字一致仍未通过**（Qwen 单请求就出现差异）。当前优先查这个数值路径分叉，不宣称缓存
+正确性或收益已验收。数据：`bench/native_cache_results.json`。
+
+## 62. Decode 计时口径
+
+见 §55.1。旧 compare_ollama 的 Terrazzo 计时用两次请求相减，Ollama 用服务端
+`eval_duration`，不可直接横比；现已改为同一请求的 first-token 到结束。原始数据：
+`bench/decode_timing_results.json`。

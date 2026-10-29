@@ -75,13 +75,14 @@ vLLM 单会话取第二次（稳态）运行；首次运行包含 kernel 热身�
 
 - **前缀缓存路径（支持）：** Qwen3 系列（用 Qwen3-4B 实测），配
   `--profile agent` / `--profile mixed`。这是产品路径。
-- **仅 raw 路径：** Qwen3.5 与 Gemma 4 2026 模型能跑，但 hybrid/sliding-window cache
-  不能被当前 dense-KV 前缀缓存快照，暂不纳入产品预设叙事。
+- **实验性原生快照：**Qwen3.5 / Gemma 4 现在可以 prewarm 并恢复原生 full-prefix cache
+  状态（ArraysCache / RotatingKVCache），但初始测试里 cached vs no-cache 的逐字一致性
+  仍未通过，暂不作为生产预设。
 - 不做“哪个模型综合最快”的结论。生成行为诊断、基准 caveat 和失效记录都在
-  [BENCHMARKS §54–59](BENCHMARKS.md)；性能对照不再作为首页主张。
-- **缓存正确性尚未全部通过：**Qwen3-4B 的单请求、并发、快照复用、abort 后复用都与
-  no-cache 一致；但多轮 A 的第 2 轮差一个 token（12 vs13，输入长度相同），可重复。
-  见 [BENCHMARKS §58](BENCHMARKS.md)。在解释/修复前不宣称缓存收益。
+  [BENCHMARKS §54–62](BENCHMARKS.md)；性能对照不再作为首页主张。
+- **缓存正确性尚未全部通过：**Qwen3-4B 的单请求、并发、快照复用、abort 后复用与
+  no-cache 一致；但多轮 A 第 2 轮差一个 token。Qwen3.5 原生快照在单请求上也与 no-cache
+  不同。见 [BENCHMARKS §58–62](BENCHMARKS.md)。修复前不宣称缓存收益。
 - Decode-only 不含排队、prefill、首 token 等待，不能读成端到端速度。
 
 ### 长系统提示：预注册是差异点

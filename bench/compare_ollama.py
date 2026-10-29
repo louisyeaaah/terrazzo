@@ -70,16 +70,21 @@ def measure_engine(model: str, prompt: str, max_tokens: int) -> dict:
     eng.generate(prompt_token_ids=ids, max_tokens=8)  # warmup
     runs = []
     for _ in range(3):
+        from terrazzo.sequence import SamplingParams
         t0 = time.perf_counter()
-        eng.generate(prompt_token_ids=ids, max_tokens=1)
-        ttft = time.perf_counter() - t0
-        s0 = eng.stats()["decode_tokens"]
-        t0 = time.perf_counter()
-        eng.generate(prompt_token_ids=ids, max_tokens=max_tokens)
+        seq = eng.add_request(prompt_token_ids=ids,
+                              params=SamplingParams(max_tokens=max_tokens, temperature=0.0))
+        while not seq.status.is_finished:
+            eng.step()
         total = time.perf_counter() - t0
-        dec = eng.stats()["decode_tokens"] - s0
-        runs.append({"decode_tokens": dec,
-                     "decode_tok_s": dec / max(1e-6, total - ttft),
+        # first_token_time is an absolute perf_counter timestamp recorded by the
+        # sequence itself, so TTFT and decode come from the same request.
+        ttft = (seq.first_token_time - t0) if seq.first_token_time is not None else total
+        n = len(seq.output_token_ids)
+        decode_s = max(1e-6, total - ttft)
+        runs.append({"decode_tokens": n,
+                     "decode_s": round(decode_s, 4),
+                     "decode_tok_s": n / decode_s,
                      "ttft_s": ttft})
     eng.close()
     return {"runs": runs,

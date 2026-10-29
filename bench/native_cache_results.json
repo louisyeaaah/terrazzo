@@ -1,0 +1,29 @@
+{
+ "date": "2026-10-29",
+ "model_family": "Qwen3.5 0.8B / Gemma 4 E2B",
+ "prefix_tokens": 2000,
+ "implementation": "SharedPrefix.native stores (cache class, cloned state, meta_state); restore only on full prefix hit; partial native hits recompute",
+ "qwen3.5-0.8b": {
+  "prewarm_s": 2.63,
+  "entries": 1,
+  "nbytes": 49582080,
+  "single": {
+   "cached": "\u89c4\u8303\u4e00\u8981\u6c42\u6240\u6709\u56de\u7b54\u5fc5\u987b\u5f15\u7528\u6761\u6b3e\u7f16\u53f7\u3002 (11 tokens)",
+   "nocache": "\u89c4\u8303\u4e00\u8981\u6c42\u6240\u6709\u56de\u7b54\u5fc5\u987b\u5f15\u7528\u6761\u6b3e\u7f16\u53f7\uff0c\u56e0\u6b64\u65e0\u6cd5\u4ec5\u7528\u4e00\u53e5\u8bdd\u603b\u7ed3\u89c4\u8303\u4e00\u7684\u5185\u5bb9\u3002 (21 tokens)",
+   "exact": false
+  },
+  "concurrent_4": "branch outputs consistent within cache path; cached vs no-cache differs"
+ },
+ "gemma4-e2b": {
+  "prewarm_s": 4.71,
+  "entries": 1,
+  "nbytes": 29018112,
+  "single": {
+   "cached": "\u89c4\u8303\u4e00\u8981\u6c42\u6240\u6709\u56de\u7b54\u5fc5\u987b\u5f15\u7528\u6761\u6b3e\u7f16\u53f7\u3002 (11 tokens)",
+   "nocache": "\u89c4\u8303\u4e00\u8981\u6c42\u6240\u6709\u56de\u7b54\u5fc5\u987b\u5f15\u7528\u6761\u6b3e\u7f16\u53f7\u3002 (11 tokens)",
+   "exact": true
+  },
+  "concurrent_4": "branch outputs consistent within cache path; some cached vs no-cache differ"
+ },
+ "verdict": "native snapshot plumbing works and full-prefix branch isolation looks okay; strict cached-vs-nocache output equality still fails, so cache correctness not accepted yet."
+}

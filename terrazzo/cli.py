@@ -68,7 +68,9 @@ def _cfg(args):
         model=_resolve_model(args.model),
         max_num_seqs=args.max_num_seqs,
         max_num_batched_tokens=args.max_num_batched_tokens,
-        prefill_chunk_size=args.prefill_chunk_size,
+        prefill_chunk_size=(getattr(args, "prefill_step_size", None)
+                            or args.prefill_chunk_size),
+        prefill_batch_size=getattr(args, "prefill_batch_size", 8),
         num_gpu_blocks=args.num_gpu_blocks,
         block_size=args.block_size,
         max_model_len=args.max_model_len,
@@ -785,6 +787,9 @@ def build_parser() -> argparse.ArgumentParser:
                         help="BatchGenerator decode batch; defaults to --max-num-seqs")
         sp.add_argument("--max-num-batched-tokens", type=int, default=2048, dest="max_num_batched_tokens")
         sp.add_argument("--prefill-chunk-size", type=int, default=512, dest="prefill_chunk_size")
+        sp.add_argument("--prefill-batch-size", type=int, default=8, dest="prefill_batch_size")
+        sp.add_argument("--prefill-step-size", type=int, default=None, dest="prefill_step_size",
+                        help="BatchGenerator prefill chunk; defaults to --prefill-chunk-size")
         sp.add_argument("--num-gpu-blocks", type=int, default=4096, dest="num_gpu_blocks",
                         help="KV blocks; 0 = derive from RAM (35 percent KV budget)")
         sp.add_argument("--block-size", type=int, default=16, dest="block_size")
