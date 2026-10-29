@@ -58,22 +58,6 @@ class CostModelTest(unittest.TestCase):
         self.assertFalse(m.estimate(2000, 2000, policy="never").reuse)
         self.assertEqual(m.estimate(2000, 0).reason, "no-cache-hit")
 
-    def test_certificate_labels_and_policy(self):
-        m = CostModel(prefill_tok_s=450.0, copy_tok_s=8000.0)
-        c = m.estimate(prompt_tokens=2544, cached_tokens=2544)
-        self.assertTrue(c.reuse)
-        self.assertEqual(c.certificate, "certified_reuse")
-        slow = CostModel(prefill_tok_s=200_000.0, copy_tok_s=1000.0,
-                         copy_overhead_ms=5.0)
-        c = slow.estimate(prompt_tokens=2000, cached_tokens=16)
-        self.assertFalse(c.reuse)
-        self.assertEqual(c.certificate, "certified_recompute")
-        self.assertFalse(slow.estimate(prompt_tokens=2000, cached_tokens=16,
-                                       policy="certified").reuse)
-        self.assertTrue(m.estimate(prompt_tokens=2544, cached_tokens=2544,
-                                   policy="certified").reuse)
-        self.assertIn("certificate", c.as_dict())
-
     def test_calibration_moves_rates(self):
         m = CostModel(prefill_tok_s=100.0)
         m.observe_step(prefill_tokens=1000, seconds=1.0)

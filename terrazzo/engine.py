@@ -52,7 +52,7 @@ class EngineConfig:
     # (agent traffic: every session sends the same system prompt, different user turn)
     prefix_dedupe_min_tokens: int = 1024
     # auto: copy only when cheaper than recomputing the cached span (see cost.py)
-    prefix_reuse: str = "auto"          # auto | always | never | certified (experimental)
+    prefix_reuse: str = "auto"          # auto | always | never
     scheduler_policy: str = "fifo"      # fifo | cost
     scheduler_aging_tokens_per_s: float = 100.0
     memory_cost_weight: float = 0.1     # cost policy: predicted KV tokens weight

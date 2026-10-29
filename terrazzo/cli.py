@@ -796,11 +796,10 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--max-model-len", type=int, default=32768, dest="max_model_len",
                         help="max prompt+output tokens per request (default 32768)")
         sp.add_argument("--no-prefix-cache", action="store_true")
-        sp.add_argument("--prefix-reuse", choices=["auto", "always", "never", "certified"],
-                        default="auto", dest="prefix_reuse",
+        sp.add_argument("--prefix-reuse", choices=["auto", "always", "never"], default="auto",
+                        dest="prefix_reuse",
                         help="reuse a cached prefix only when copy beats recompute "
-                             "(auto), always, never, or certified (experimental strict "
-                             "gate; can disable reuse when ranges are uncalibrated)")
+                             "(auto), always, or never")
         sp.add_argument("--scheduler-policy", choices=["fifo", "cost"], default="fifo",
                         dest="scheduler_policy",
                         help="fifo (default) or cost-aware admission order")

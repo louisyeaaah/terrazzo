@@ -1848,7 +1848,7 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
   cache 方法是否存在，失败给出明确错误；`TERRAZZO_SKIP_MLX_LM_CHECK=1` 仅用于试验新版本。
 - `docs/COMPATIBILITY.md` 记录测试矩阵与不支持的平台。
 
-**当前测试**：核心 268 个（1 skipped）+ 实验内核 31 个；CI 两个主 job + 手动模型 E2E job（见 workflow）。
+**当前测试**：核心 267 个（1 skipped）+ 实验内核 31 个；CI 两个主 job + 手动模型 E2E job（见 workflow）。
 
 ## 45. Tools / function calling（2026-10-27）
 
@@ -1874,7 +1874,7 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
 
 关键修复：带 tools 时默认 `enable_thinking=false`（原来 `<think>` 把 token 预算吃光，
 128 token 内根本到不了 `<tool_call>`）；OpenAI 报文中 assistant `content:null` 需规范化为空串，
-否则 Jinja 模板抛 `'NoneType' is not iterable`。全套 **268 个核心测试 OK（1 skipped）+ 31 个实验内核测试**（§47 后）。
+否则 Jinja 模板抛 `'NoneType' is not iterable`。全套 **267 个核心测试 OK（1 skipped）+ 31 个实验内核测试**（§47 后）。
 
 ## 47. 残余风险修复（2026-10-27）
 
@@ -1900,8 +1900,8 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
 - Ollama 原生模式默认 `think=false`：qwen3 在 Ollama 默认开启思考会把 content 吃空、多轮历史失真。
 
 **修复后验证（commit `fbbdcb0`）**：
-- 本地：核心 **268 tests（1 skipped）**、实验内核 **31 tests（3 skipped）**、纯 Python（MLX blocked）
-  **166 run / 0 fail / 25 skip**。
+- 本地：核心 **267 tests（1 skipped）**、实验内核 **31 tests（3 skipped）**、纯 Python（MLX blocked）
+  **165 run / 0 fail / 25 skip**。
 - CI（[run 40426254576](https://github.com/louisyeaaah/terrazzo/actions/runs/40426254576)）：
   `Core tests (pure Python, MLX blocked)` ✅、`macOS (MLX) import + tests`（含 Metal kernel 与
   experiments）✅；`Model E2E` 仅在手动 `workflow_dispatch` 时运行（本次按预期 skipped）。
@@ -2210,6 +2210,10 @@ Qwen3.5 0.8B/2B 的 token 量已对齐，可作 aggregate 比较；Qwen3.5 4B �
 不可比。Token 总量接近也**不代表每轮输入一致**：第二轮输入包含第一轮回答，首轮输出
 长度不同会改变第二轮输入；当前 raw JSON 未保存逐请求输入 tokens，下一轮必须补。
 
+原始数据：`bench/model_vs_ollama_results.json`、`bench/ollama_2026_quiet16.json`。
+
+模型矩阵脚本：`bench/model_matrix.py`。
+
 ## 55. 生成行为诊断（Gemma 4 / Qwen3.5 4B）
 
 单请求，同一 system+user，max_tokens=64，thinking 关闭。诊断数据：
@@ -2318,7 +2322,8 @@ completion batch=16、无前缀缓存、16 会话 ×2 turns ×64。单次运行�
 | 8 | 1024 | 26.6 | 18.82s | 35.76s | 57.58s | 6080 |
 | 4 | 256 | 31.1 | **9.08s** | 29.71s | 55.20s | 3023 |
 
-初步取舍：`4:512` 降 TTFT/内存但完成 p95 略差；`8:512` 吞吐/p95 更均衡；`8:1024` 明显变差。
+数据/脚本：`bench/batch_sweep.py`、`bench/batch_sweep_results.json`。初步取舍：
+`4:512` 降 TTFT/内存但完成 p95 略差；`8:512` 吞吐/p95 更均衡；`8:1024` 明显变差。
 这是静态执行器参数，不代表 scheduler 能逐步控制 prefill 预算。CLI 已加
 `--prefill-batch-size` / `--prefill-step-size`，`/stats.executor` 暴露生效值。下一步再做
 候选点的重复验证，再重新看 admission cap；旧模型的 cap4 结论不能直接套到新模型。
@@ -2377,33 +2382,3 @@ Ollama 仍用服务端 `eval_count/eval_duration`，`prompt_eval_duration` 不�
 - 实际为 0 时调用 `PagedPrefixCache.undo_hit()`；
 - 实际 >0 时只累加实际复用 tokens。
 - 新增 fake-engine 测试断言：重算后 `num_hits=0`、`prefix_hit_tokens=0`。
-
-
-## 65. DoSA 式证书门控：一次负结果（2026-10-30）
-
-借鉴 DoSA 的“上下界不重叠才走快路径”，在 prefix-cache 复用决策上做了两项低风险改造：
-
-1. `/stats.timeline` 记录最近请求的 token gap p50/p95、TTFT、实际复用 tokens，
-   以及最近 64 步的 step 时间；
-2. `CostModel` 增加 certificate 标签（`certified_reuse` / `uncertain_reuse` /
-   `certified_recompute` / `uncertain_recompute`），并把“带 cache 的 step”从 prefill
-   速率校准中排除（否则 copy 时间会被误记成 prefill 慢，污染后续预测）。
-
-A/B：Qwen3.5 2B，16 会话 ×2 turns ×64，2k 共享 system prefix，prewarm 后比较
-`--prefix-reuse auto` 与内部 `certified` 策略：
-
-| 策略 | tok/s | TTFT p50 | TTFT p95 | completion p95 | cache hits | reuse |
-|---|---:|---:|---:|---:|---:|---:|
-| auto | 244.6 | 1.06s | 1.43s | 4.63s | 33 | 32 |
-| certified | 32.0 | 14.79s | 29.03s | 46.53s | 1 | 0 |
-
-certified 把“预测未标定”的请求全部判为 recompute，实际退回无缓存路径；这不是优化，
-是一次明确的负结果。结论：
-
-- DoSA 的证书思想可以借，但**Terrazzo 的 prefix-cache 复用已经有保守区间门控**，
-  再加“必须双区间 confident”只会过度保守；
-- 保留 certificate 标签和 timeline 观测用于诊断；`certified` 仅作为实验选项保留以复现
-  这次负结果，不设为默认，也不推荐使用；
-- 当前更值得做的是用 timeline 定位真正的 prefill/decode 停顿，而不是继续加缓存门控。
-
-数据：`bench/certificate_ab_results.json`。
