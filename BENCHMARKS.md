@@ -2425,6 +2425,28 @@ Ollama 仍用服务端 `eval_count/eval_duration`，`prompt_eval_duration` 不�
 完整 token IDs、候选 logits、共同历史在 `bench/first_divergence_results.json`；
 probe 脚本：`bench/first_divergence_probe.py`。最大绝对 logits 差不是验收阈值。
 
+快照恢复隔离（`bench/snapshot_restore_probe.py`，经 `PagedPrefixCache.store` 保存、
+`_seed_caches` 恢复；同一条 B prompt、同一 split=2432）：
+
+| 模型 | 快照类型 | live cache vs 保存/恢复 cache |
+|---|---|---|
+| Qwen3.5 0.8B | native | suffix + generation 逐 token 一致 |
+| Qwen3-4B | dense KV | suffix + generation 逐 token 一致 |
+| Gemma 4 E2B | native | suffix + generation 逐 token 一致 |
+
+结论：**save/restore 本身没有改变 argmax**。接下来把 probe 扩展到真实
+`BatchGenerator` 路径（同一 suffix 块）：
+
+| 模型 | direct live vs restored | BatchGenerator with cache vs no-cache |
+|---|---|---|
+| Qwen3.5 0.8B | 一致 | **不一致**：cache 短、no-cache 长，和服务 B 一致 |
+| Gemma 4 E2B | 一致 | **不一致**：标点分叉，和服务 B 一致 |
+| Qwen3-4B | 一致 | 本 prompt 一致 |
+
+因此当前证据把服务 B 差异缩小到 **BatchGenerator 的 cache-vs-no-cache 路径**，不是
+`PagedPrefixCache.store` 或 `_seed_caches` 恢复本身。下一步应查 BatchGenerator 的
+cache 插入/合并/prefill 形状；在查清前仍不宣称缓存一致性通过。
+
 数据：`bench/cache_equivalence_results.json`、`bench/native_cache_results.json`。
 
 ### 65.1 Batch 候选与 admission cap 复测

@@ -33,7 +33,7 @@
    "B": "differs (punctuation/continuation)"
   }
  },
- "verdict": "single A exact and actual reuse >0; B differs due chunked bf16 path, not cache hit-length or branch contamination; bitwise equality is not achieved",
+ "verdict": "single A exact and actual reuse >0; direct snapshot save/restore is exact; service B difference matches BatchGenerator cache-vs-no-cache path, so next investigate batcher insertion/merge rather than snapshot",
  "serial_B": "cached vs no-cache differs even with batch=1; stable per path",
  "batch1_B": "still differs (prefill/completion batch=1)"
 }

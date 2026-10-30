@@ -53,5 +53,20 @@
   },
   "qwen3.5-0.8b": "no output divergence under this split; previous argsort-based prompt tie was a probe artifact",
   "qwen3-4b": "no output divergence under this split; previous EOS/EOT record was after the stop token and is invalid"
+ },
+ "snapshot_restore_probe": "bench/snapshot_restore_probe.py",
+ "snapshot_restore_results": "bench/snapshot_restore_results.json",
+ "snapshot_restore": {
+  "direct_live_vs_restored": {
+   "qwen3.5-0.8b": "suffix+generation exact",
+   "qwen3-4b": "suffix+generation exact",
+   "gemma4-e2b": "suffix+generation exact"
+  },
+  "batcher_with_cache_vs_no_cache": {
+   "qwen3.5-0.8b": "cache path short; no-cache path long; matches service B",
+   "gemma4-e2b": "cache path differs by punctuation; matches service B",
+   "qwen3-4b": "both same for this prompt"
+  },
+  "conclusion": "snapshot save/restore is exact; service-level B difference is introduced by BatchGenerator cache-vs-no-cache path, not snapshot restore or output probe."
  }
 }
