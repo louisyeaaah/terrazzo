@@ -2400,27 +2400,30 @@ Ollama 仍用服务端 `eval_count/eval_duration`，`prompt_eval_duration` 不�
 | Qwen3-4B 标准 cache 多轮 A 第 2 轮 | cache 12 vs no-cache 13 tokens，输入长度相同且稳定 |
 | Qwen3.5 0.8B no-cache 并发 B vs 串行 B | 并发本身也会改变输出 |
 
-首次分叉记录（同 prompt，split=2432）：
+首次分叉 probe 已修正（2026-10-30）：
 
-| 模型 | 首次分叉 | split 路径 | full 路径 | 分差 |
-|---|---|---|---|---|
-| Qwen3.5 0.8B | prompt 第 2434 位 | top1 110827，logits 14.0/14.0，margin 0.0 | top1 99986，14.0625/14.0，margin 0.0625 | 精确 top1 打平后翻转 |
-| Qwen3-4B | generation 第 12 步 | EOS (`&#124;im_end&#124;`)，25.25/24.875，margin 0.375 | EOT (`&#124;endoftext&#124;`)，25.25/25.125，margin 0.125 | EOS vs EOT |
-| Gemma 4 E2B | generation 第 17 步 | “请”，18.75/18.75，margin 0.0 | “下一步请”，18.5/18.25，margin 0.25 | top1/top2 打平后翻转 |
+- token 选择改用 `mx.argmax`，和 mlx-lm 0.31.3 的温度 0 sampler 一致；排序只用于展示；
+- prompt 内部差异单独记录，不再跳过生成；
+- 生成阶段使用 tokenizer 的 EOS 集合，遇到停止 token 就结束，不再把 `<|im_end|>` 喂回模型。
 
-共同输入历史、完整 token IDs、top5 logits 在 `bench/first_divergence_results.json`；
-最大绝对 logits 差不是验收阈值，不再单独使用。
+修正后的记录（同 prompt，split=2432）：
 
-结论：
+| 模型 | 结果 |
+|---|---|
+| Qwen3.5 0.8B | prompt/generation 都无分叉；之前报告的 prompt 第 2434 位“tie”是 `argsort` 展示排序造成的 probe artifact |
+| Qwen3-4B | 生成无分叉；之前的 EOS/EOT 记录发生在已经生成 `<|im_end|>` 之后，已按服务停止规则失效 |
+| Gemma 4 E2B | **真实生成分叉**：第 8 步 split top1 “必须”（21.25/21.25，margin 0.0），full top1 “，”（21.375/21.25，margin 0.125） |
 
-- 前缀 cache 保留的是 KV 复用语义，**不保证跨 prefill/chunk 边界的逐 bit 输出一致**；
-  近 tie 的 greedy token（尤其是 EOS/逗号）会被 bf16 累加顺序翻转；
-- 这不是 prefix hit 长度、native 恢复位置或 A/B 串状态；这些路径已有单测和真实模型验证；
-- 本轮验收只针对已测场景：实际复用正确、分支隔离、单请求 A 输出一致；B 的首次分叉
-  已定位到具体 top1 tie/EOS 翻转，因此记录为数值边界，但不把“所有 A 都通过、所有 B
-  都是例外”当成通用结论；
-- 若要强求逐字一致，需要固定 prefill chunk 边界/数值路径或改用更高精度，这会牺牲
-  当前性能目标，未在本轮实施。
+因此目前能确认的是：
+
+- Gemma 4 E2B 的这条单请求分叉确实由 top1 打平后的采样选择差异触发；
+- Qwen3.5 0.8B / Qwen3-4B 的**服务输出 B 差异仍未由 split probe 解释**，不能归因为已证明的
+  near-tie，也不能把全部缓存差异归为 bf16；
+- 之前的 Qwen“首次分叉”表格作废，不再使用；
+- 不把“所有 A 通过、所有 B 是例外”当成通用结论；这只覆盖已测 prompt。
+
+完整 token IDs、候选 logits、共同历史在 `bench/first_divergence_results.json`；
+probe 脚本：`bench/first_divergence_probe.py`。最大绝对 logits 差不是验收阈值。
 
 数据：`bench/cache_equivalence_results.json`、`bench/native_cache_results.json`。
 
@@ -2445,8 +2448,8 @@ completion p95 106.2 / 104.8 / 108.3s。16 个会话最多只有 16 个未完成
 | 16 | 26.5 | 55.84s | 96.44s | 3168 |
 | 32 | 26.9 | 55.74s | 95.11s | 3312 |
 
-cap32 在 40 并发下略好，但差距很小；两者都只是候选，尚不能定最终默认值。高负载下
-仍只作方向性结论。
+cap32 在 40 并发下略好（26.5 vs 26.9 tok/s，约 1.5%），但这是单次高负载结果，
+不能确认稳定收益；两者都只是候选，尚不能定最终默认值。
 
 数据：`bench/batch_sweep_replication.json`、`bench/batch_cap8_results.json`、
 `bench/batch_cap16_results.json`、`bench/batch_cap32_results.json`、

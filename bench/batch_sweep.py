@@ -84,8 +84,8 @@ def main():
                 raise RuntimeError(f"completion batch mismatch: {executor}")
             if executor.get('prefill_batch_size') != pb or executor.get('prefill_step_size') != step:
                 raise RuntimeError(f"prefill config mismatch: {executor}")
-            if auto.get('enabled'):
-                raise RuntimeError(f"auto_concurrency unexpectedly enabled: {auto}")
+            if auto.get('enabled') is not False:
+                raise RuntimeError(f"auto_concurrency not explicitly disabled: {auto}")
             rows.append({'prefill_batch':pb,'prefill_step':step,
                          'max_num_seqs':args.max_num_seqs,'sessions':args.sessions,
                          'effective':effective,

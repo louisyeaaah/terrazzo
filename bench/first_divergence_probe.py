@@ -1,10 +1,9 @@
 """Minimal split-prefill vs full-prefill first-divergence probe.
 
-Loads one local MLX model, splits one chat prompt at a chosen token boundary,
-and records the first position where greedy top-1 (or prompt logits) differ:
-token id, both candidates' logits, top-2 margin, and the common input history.
-
-    python bench/first_divergence_probe.py --model .hf-models/qwen3.5-0.8b
+Uses mx.argmax exactly like mlx-lm's temperature-0 sampler; sorting is only for
+displaying candidates. Prompt-internal differences are recorded separately and
+generation always continues from the end of the full prompt. Generation stops on
+the tokenizer's EOS ids just like the service.
 """
 from __future__ import annotations
 import argparse, hashlib, json, sys
@@ -25,13 +24,40 @@ def _top(logits, k=5):
 
 
 def _choice(logits):
-    idx, vals = _top(logits, 2)
+    """Return (argmax token, top-2 margin, top-5 display).
+
+    The sampled id must come from mx.argmax, not from the display sort: at an
+    exact tie those are not guaranteed to pick the same id.
+    """
+    token = int(mx.argmax(logits).item())
+    idx, vals = _top(logits, 5)
     margin = vals[0] - vals[1] if len(vals) > 1 else 0.0
-    return idx, vals, margin
+    return token, margin, idx, vals
 
 
-def run(model_path: str, split: int, max_new: int, system_tokens: int, question: str):
+def _record(model, tok, split, prompt_len, prompt_first, prompt_count,
+            generation_first, generated_s, generated_f, eos_ids):
+    return {
+        "model": model,
+        "prompt_tokens": prompt_len,
+        "split": split,
+        "eos_token_ids": sorted(eos_ids),
+        "prompt_divergence": prompt_first,
+        "prompt_divergence_count": prompt_count,
+        "first_output_divergence": generation_first,
+        "generated_ids_split": generated_s,
+        "generated_ids_full": generated_f,
+        "generated_text_split": tok.decode(generated_s),
+        "generated_text_full": tok.decode(generated_f),
+    }
+
+
+def run(model_path: str, split: int, max_new: int, system_tokens: int, question: str,
+        stop_ids: list[int] | None = None):
     model, tok = load(model_path)
+    eos_ids = set(stop_ids or getattr(tok, "eos_token_ids", None)
+                  or [getattr(tok, "eos_token_id", -1)])
+    eos_ids.discard(-1)
     system = build_system_prompt(system_tokens)
     messages = [{"role": "system", "content": system},
                 {"role": "user", "content": question}]
@@ -48,7 +74,7 @@ def run(model_path: str, split: int, max_new: int, system_tokens: int, question:
     cache_split = make_prompt_cache(model)
     model(mx.array([ids[:split]]), cache=cache_split)
     split_prompt_logits = []
-    for i, token in enumerate(ids[split:], start=split):
+    for token in ids[split:]:
         out = model(mx.array([[token]]), cache=cache_split)
         mx.eval(out)
         split_prompt_logits.append(out[0, -1, :])
@@ -58,65 +84,65 @@ def run(model_path: str, split: int, max_new: int, system_tokens: int, question:
     mx.eval(full_out)
     full_prompt_logits = [full_out[0, split + i, :] for i in range(len(ids) - split)]
 
-    record = {
-        "model": model_path, "prompt_tokens": len(ids), "split": split,
-        "prompt_sha256": hashlib.sha256(
-            json.dumps(ids).encode()).hexdigest()[:16],
-        "system_tokens_requested": system_tokens, "question": question,
-        "max_new_tokens": max_new,
-    }
-    # Compare the next-token distribution after every suffix prompt position.
+    prompt_first = None
+    prompt_count = 0
     for j, (a, b) in enumerate(zip(split_prompt_logits, full_prompt_logits)):
-        sa, va, ma = _choice(a)
-        sb, vb, mb = _choice(b)
-        if sa[0] != sb[0]:
-            record["first_divergence"] = {
-                "stage": "prompt", "position": split + j,
-                "input_token_id": ids[split + j],
-                "input_token": tok.decode([ids[split + j]]),
-                "split_top1": sa, "full_top1": sb,
-                "split_logits": va, "full_logits": vb,
-                "split_margin": ma, "full_margin": mb,
-                "history_token_ids": ids[: split + j + 1],
-                "history_text": tok.decode(ids[: split + j + 1])[-200:],
-                "split_top5": list(zip(*_top(a, 5))),
-                "full_top5": list(zip(*_top(b, 5))),
-            }
-            break
-    # If prompt logits agree, generate greedily from both caches and compare.
-    if "first_divergence" not in record:
-        split_last = split_prompt_logits[-1]
-        full_last = full_prompt_logits[-1]
-        generated = []
-        s_cache, f_cache = cache_split, cache_full
-        for step in range(max_new):
-            sa, va, ma = _choice(split_last)
-            sb, vb, mb = _choice(full_last)
-            if sa[0] != sb[0]:
-                record["first_divergence"] = {
-                    "stage": "generation", "step": step,
-                    "input_token_id": generated[-1] if generated else ids[-1],
-                    "input_token": tok.decode([generated[-1]]) if generated else tok.decode([ids[-1]]),
+        sa, ma, ia, va = _choice(a)
+        sb, mb, ib, vb = _choice(b)
+        if sa != sb:
+            prompt_count += 1
+            if prompt_first is None:
+                prompt_first = {
+                    "stage": "prompt", "position": split + j,
+                    "input_token_id": ids[split + j],
+                    "input_token": tok.decode([ids[split + j]]),
                     "split_top1": sa, "full_top1": sb,
+                    "split_top1_text": tok.decode([sa]),
+                    "full_top1_text": tok.decode([sb]),
                     "split_logits": va, "full_logits": vb,
                     "split_margin": ma, "full_margin": mb,
-                    "history_token_ids": ids + generated,
-                    "history_text": tok.decode(ids + generated)[-200:],
-                    "split_top5": list(zip(*_top(split_last, 5))),
-                    "full_top5": list(zip(*_top(full_last, 5))),
+                    "history_token_ids": ids[: split + j + 1],
+                    "history_text": tok.decode(ids[: split + j + 1])[-200:],
+                    "split_top5": list(zip(ia, va)),
+                    "full_top5": list(zip(ib, vb)),
                 }
-                break
-            token = sa[0]
-            generated.append(token)
-            s_out = model(mx.array([[token]]), cache=s_cache)
-            f_out = model(mx.array([[token]]), cache=f_cache)
-            mx.eval(s_out, f_out)
-            split_last, full_last = s_out[0, -1, :], f_out[0, -1, :]
-        record["generated_ids"] = generated
-        record["generated_text"] = tok.decode(generated)
-    if "first_divergence" not in record:
-        record["first_divergence"] = None
-    return record
+
+    split_last, full_last = split_prompt_logits[-1], full_prompt_logits[-1]
+    generated_s: list[int] = []
+    generated_f: list[int] = []
+    generation_first = None
+    for step in range(max_new):
+        st, sm, si, sv = _choice(split_last)
+        ft, fm, fi, fv = _choice(full_last)
+        if st != ft or ((st in eos_ids) != (ft in eos_ids)):
+            generation_first = {
+                "stage": "generation", "step": step,
+                "input_token_id": generated_s[-1] if generated_s else ids[-1],
+                "input_token": (tok.decode([generated_s[-1]]) if generated_s
+                                else tok.decode([ids[-1]])),
+                "split_top1": st, "full_top1": ft,
+                "split_top1_text": tok.decode([st]),
+                "full_top1_text": tok.decode([ft]),
+                "split_logits": sv, "full_logits": fv,
+                "split_margin": sm, "full_margin": fm,
+                "split_stop": st in eos_ids, "full_stop": ft in eos_ids,
+                "history_token_ids": ids + generated_s,
+                "history_text": tok.decode(ids + generated_s)[-200:],
+                "split_top5": list(zip(si, sv)),
+                "full_top5": list(zip(fi, fv)),
+            }
+            break
+        if st in eos_ids:  # both paths stop at the same token
+            break
+        generated_s.append(st)
+        generated_f.append(ft)
+        s_out = model(mx.array([[st]]), cache=cache_split)
+        f_out = model(mx.array([[ft]]), cache=cache_full)
+        mx.eval(s_out, f_out)
+        split_last, full_last = s_out[0, -1, :], f_out[0, -1, :]
+
+    return _record(model_path, tok, split, len(ids), prompt_first, prompt_count,
+                   generation_first, generated_s, generated_f, eos_ids)
 
 
 def main():
@@ -125,13 +151,15 @@ def main():
     ap.add_argument("--split", type=int, default=2432)
     ap.add_argument("--system-tokens", type=int, default=2000)
     ap.add_argument("--question", default="请用一句话总结规范二。")
-    ap.add_argument("--max-new-tokens", type=int, default=16)
+    ap.add_argument("--max-new-tokens", type=int, default=64)
+    ap.add_argument("--stop-id", type=int, action="append", default=None,
+                    help="override tokenizer EOS ids (repeatable)")
     ap.add_argument("--out", default=str(ROOT / "bench" / "first_divergence_results.json"))
     args = ap.parse_args()
     record = run(args.model, args.split, args.max_new_tokens,
-                 args.system_tokens, args.question)
+                 args.system_tokens, args.question, args.stop_id)
     Path(args.out).write_text(json.dumps(record, indent=1, ensure_ascii=False))
-    print(json.dumps(record, indent=1, ensure_ascii=False)[:5000])
+    print(json.dumps(record, indent=1, ensure_ascii=False)[:6000])
     print("wrote", args.out)
 
 
