@@ -28,7 +28,7 @@
     "task_id": "refcount",
     "set": "tune",
     "keyword_pass": true,
-    "tool_trace_ok": true,
+    "tool_trace_ok": false,
     "truncated": true,
     "complete_review": false,
     "pending_tool_calls": false,
@@ -48,7 +48,7 @@
     "task_id": "cache",
     "set": "tune",
     "keyword_pass": true,
-    "tool_trace_ok": true,
+    "tool_trace_ok": false,
     "truncated": true,
     "complete_review": false,
     "pending_tool_calls": false,
@@ -68,7 +68,7 @@
     "task_id": "mask",
     "set": "tune",
     "keyword_pass": true,
-    "tool_trace_ok": true,
+    "tool_trace_ok": false,
     "truncated": true,
     "complete_review": false,
     "pending_tool_calls": false,
@@ -98,7 +98,11 @@
    "cache",
    "mask"
   ],
-  "tool_trace_failures": []
+  "tool_trace_failures": [
+   "refcount",
+   "cache",
+   "mask"
+  ]
  },
  "tasks": [
   {
@@ -223,7 +227,7 @@
    "prompt_tokens": 10413,
    "completion_tokens": 217,
    "keyword_pass": true,
-   "tool_trace_ok": true,
+   "tool_trace_ok": false,
    "truncated": true,
    "complete_review": false,
    "final_finish_reason": "length",
@@ -352,7 +356,7 @@
    "prompt_tokens": 19817,
    "completion_tokens": 216,
    "keyword_pass": true,
-   "tool_trace_ok": true,
+   "tool_trace_ok": false,
    "truncated": true,
    "complete_review": false,
    "final_finish_reason": "length",
@@ -481,7 +485,7 @@
    "prompt_tokens": 8887,
    "completion_tokens": 218,
    "keyword_pass": true,
-   "tool_trace_ok": true,
+   "tool_trace_ok": false,
    "truncated": true,
    "complete_review": false,
    "final_finish_reason": "length",

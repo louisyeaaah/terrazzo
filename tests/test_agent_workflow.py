@@ -86,6 +86,25 @@ class AgentClassifierTest(unittest.TestCase):
         self.assertTrue(r["tool_rounds_exhausted"])
         self.assertFalse(r["complete_review"])
 
+    def test_extra_file_read_does_not_fail_tool_trace(self):
+        task = TASKS[0]
+        calls = [
+            {"id": "c1", "type": "function",
+             "function": {"name": "read_file",
+                          "arguments": "{\"path\": \"terrazzo/blocks.py\"}"}},
+            {"id": "c2", "type": "function",
+             "function": {"name": "read_file",
+                          "arguments": "{\"path\": \"README.md\"}"}},
+        ]
+        text = "引用计数 ref_count 释放 release 建议"
+        replies = [_resp(tool_calls=calls, finish="tool_calls"),
+                   _resp(text, finish="stop"),
+                   _resp(text, finish="stop")]
+        with patch("agent_review_workflow.chat", side_effect=replies):
+            r = run_task("http://unused", "m", "system", task, 96, 1)
+        self.assertTrue(r["tool_trace_ok"])
+        self.assertTrue(r["complete_review"])
+
     def test_missing_final_active_is_not_idle(self):
         checks = {
             "abort": {"aborted": True}, "after_abort": "stop",

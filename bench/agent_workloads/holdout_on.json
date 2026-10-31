@@ -397,7 +397,7 @@
     "task_id": "scheduler",
     "set": "holdout",
     "keyword_pass": true,
-    "tool_trace_ok": true,
+    "tool_trace_ok": false,
     "truncated": true,
     "complete_review": false,
     "pending_tool_calls": false,
@@ -417,7 +417,7 @@
     "task_id": "request",
     "set": "holdout",
     "keyword_pass": true,
-    "tool_trace_ok": true,
+    "tool_trace_ok": false,
     "truncated": true,
     "complete_review": false,
     "pending_tool_calls": false,
@@ -462,7 +462,10 @@
    "scheduler",
    "request"
   ],
-  "tool_trace_failures": []
+  "tool_trace_failures": [
+   "scheduler",
+   "request"
+  ]
  },
  "tasks": [
   {
@@ -587,7 +590,7 @@
    "prompt_tokens": 12150,
    "completion_tokens": 217,
    "keyword_pass": true,
-   "tool_trace_ok": true,
+   "tool_trace_ok": false,
    "truncated": true,
    "complete_review": false,
    "final_finish_reason": "length",
@@ -716,7 +719,7 @@
    "prompt_tokens": 20316,
    "completion_tokens": 216,
    "keyword_pass": true,
-   "tool_trace_ok": true,
+   "tool_trace_ok": false,
    "truncated": true,
    "complete_review": false,
    "final_finish_reason": "length",

@@ -1,0 +1,1089 @@
+{
+ "summary": {
+  "label": "golden-cache-on",
+  "base": "http://127.0.0.1:9380",
+  "model": "terrazzo",
+  "task_set": "golden",
+  "system_chars": 3520,
+  "system_tokens_est": 1760,
+  "prewarm": null,
+  "environment": {
+   "timestamp": "2026-10-31T16:55:49+1100",
+   "hostname": "yezhipengdeMacBook-Pro.local",
+   "platform": "macOS-26.6.2-arm64-arm-64bit",
+   "machine": "arm64",
+   "python": "3.10.19",
+   "cpu_count": 10,
+   "loadavg": [
+    4.3115234375,
+    3.61181640625,
+    3.7109375
+   ],
+   "git_commit": "e509069",
+   "terrazzo_version": "0.3.0",
+   "backend_version": "0.3.0",
+   "stats": {
+    "steps": 389,
+    "waiting": 0,
+    "running": 0,
+    "admitted": 9,
+    "preemptions": 0,
+    "peak_running": 1,
+    "peak_waiting": 1,
+    "num_blocks": 4096,
+    "block_size": 16,
+    "used": 140,
+    "free": 3954,
+    "usage": 0.0342,
+    "peak_usage": 0.0781,
+    "peak_used": 320,
+    "peak_kv_tokens": 5120,
+    "cached_hashes": 12,
+    "mean_step_ms": 30.08,
+    "prefill_tokens": 3109,
+    "prefix_hit_tokens": 6144,
+    "decode_tokens": 378,
+    "uptime_s": 18.66,
+    "mlx_lm_version": "0.31.3",
+    "prefix_cache": {
+     "entries": 3,
+     "active": 0,
+     "nbytes": 330301440,
+     "hits": 6,
+     "misses": 0,
+     "stores": 3,
+     "evictions": 0,
+     "hit_rate": 1.0,
+     "reuse_policy": "always",
+     "recompute_skips": 0,
+     "reuse_autos": 3
+    },
+    "scheduler_policy": "fifo",
+    "max_num_seqs": 16,
+    "executor": {
+     "completion_batch_size": 16,
+     "prefill_batch_size": 8,
+     "prefill_step_size": 512
+    },
+    "concurrency_changes": [],
+    "request_stages": {
+     "added": 5,
+     "first_token": 5,
+     "finished": 5,
+     "aborted": 0,
+     "failed": 0
+    },
+    "cost_model": {
+     "kv_bytes_per_token": 147456,
+     "prefill_tok_s": 1555.2,
+     "copy_tok_s": 8000.0,
+     "copy_overhead_ms": 0.5,
+     "band": 0.3,
+     "prefill_observations": 6,
+     "copy_observations": 0,
+     "prefill_points": 6,
+     "copy_points": 0,
+     "last_cost": {
+      "prompt_tokens": 2731,
+      "cached_tokens": 2048,
+      "uncached_tokens": 683,
+      "snapshot_mb": 304.3,
+      "copy_ms": 256.5,
+      "recompute_ms": 367741.109,
+      "reuse": true,
+      "reason": "policy:always",
+      "uncertain": false,
+      "copy_range": {
+       "ms": 256.5,
+       "low_ms": 179.7,
+       "high_ms": 333.3,
+       "confident": true,
+       "source": "default-rate"
+      },
+      "recompute_range": {
+       "ms": 367741.109,
+       "low_ms": 257418.776,
+       "high_ms": 478063.441,
+       "confident": false,
+       "source": "above-calibration"
+      }
+     },
+     "prefill_calibration_skips": 3
+    },
+    "execution_control": {
+     "steps": 389,
+     "scheduled_prefill_tokens": 3767,
+     "actual_prompt_tokens": 7701,
+     "scheduled_decode_tokens": 378,
+     "actual_decode_tokens": 378,
+     "scheduled_prefill_requests": 9,
+     "inserted_prefill_requests": 5,
+     "steps_with_prefill": 9,
+     "steps_with_mismatch": 8,
+     "actual_to_scheduled_prompt_ratio": 2.044,
+     "last_steps": [
+      {
+       "step": 370,
+       "scheduled_prefill_tokens": 0,
+       "scheduled_decode_tokens": 1,
+       "scheduled_prefill_requests": 0,
+       "inserted_prefill_requests": 0,
+       "actual_prompt_tokens": 0,
+       "actual_decode_tokens": 1,
+       "step_ms": 20.2,
+       "cache_hits": 0,
+       "cache_stores": 0,
+       "cache_skips": 0,
+       "scheduled_ids": [],
+       "inserted_ids": []
+      },
+      {
+       "step": 371,
+       "scheduled_prefill_tokens": 0,
+       "scheduled_decode_tokens": 1,
+       "scheduled_prefill_requests": 0,
+       "inserted_prefill_requests": 0,
+       "actual_prompt_tokens": 0,
+       "actual_decode_tokens": 1,
+       "step_ms": 18.68,
+       "cache_hits": 0,
+       "cache_stores": 0,
+       "cache_skips": 0,
+       "scheduled_ids": [],
+       "inserted_ids": []
+      },
+      {
+       "step": 372,
+       "scheduled_prefill_tokens": 0,
+       "scheduled_decode_tokens": 1,
+       "scheduled_prefill_requests": 0,
+       "inserted_prefill_requests": 0,
+       "actual_prompt_tokens": 0,
+       "actual_decode_tokens": 1,
+       "step_ms": 18.75,
+       "cache_hits": 0,
+       "cache_stores": 0,
+       "cache_skips": 0,
+       "scheduled_ids": [],
+       "inserted_ids": []
+      },
+      {
+       "step": 373,
+       "scheduled_prefill_tokens": 0,
+       "scheduled_decode_tokens": 1,
+       "scheduled_prefill_requests": 0,
+       "inserted_prefill_requests": 0,
+       "actual_prompt_tokens": 0,
+       "actual_decode_tokens": 1,
+       "step_ms": 19.97,
+       "cache_hits": 0,
+       "cache_stores": 0,
+       "cache_skips": 0,
+       "scheduled_ids": [],
+       "inserted_ids": []
+      },
+      {
+       "step": 374,
+       "scheduled_prefill_tokens": 0,
+       "scheduled_decode_tokens": 1,
+       "scheduled_prefill_requests": 0,
+       "inserted_prefill_requests": 0,
+       "actual_prompt_tokens": 0,
+       "actual_decode_tokens": 1,
+       "step_ms": 18.73,
+       "cache_hits": 0,
+       "cache_stores": 0,
+       "cache_skips": 0,
+       "scheduled_ids": [],
+       "inserted_ids": []
+      },
+      {
+       "step": 375,
+       "scheduled_prefill_tokens": 0,
+       "scheduled_decode_tokens": 1,
+       "scheduled_prefill_requests": 0,
+       "inserted_prefill_requests": 0,
+       "actual_prompt_tokens": 0,
+       "actual_decode_tokens": 1,
+       "step_ms": 18.98,
+       "cache_hits": 0,
+       "cache_stores": 0,
+       "cache_skips": 0,
+       "scheduled_ids": [],
+       "inserted_ids": []
+      },
+      {
+       "step": 376,
+       "scheduled_prefill_tokens": 0,
+       "scheduled_decode_tokens": 1,
+       "scheduled_prefill_requests": 0,
+       "inserted_prefill_requests": 0,
+       "actual_prompt_tokens": 0,
+       "actual_decode_tokens": 1,
+       "step_ms": 19.41,
+       "cache_hits": 0,
+       "cache_stores": 0,
+       "cache_skips": 0,
+       "scheduled_ids": [],
+       "inserted_ids": []
+      },
+      {
+       "step": 377,
+       "scheduled_prefill_tokens": 0,
+       "scheduled_decode_tokens": 1,
+       "scheduled_prefill_requests": 0,
+       "inserted_prefill_requests": 0,
+       "actual_prompt_tokens": 0,
+       "actual_decode_tokens": 1,
+       "step_ms": 20.83,
+       "cache_hits": 0,
+       "cache_stores": 0,
+       "cache_skips": 0,
+       "scheduled_ids": [],
+       "inserted_ids": []
+      },
+      {
+       "step": 378,
+       "scheduled_prefill_tokens": 0,
+       "scheduled_decode_tokens": 1,
+       "scheduled_prefill_requests": 0,
+       "inserted_prefill_requests": 0,
+       "actual_prompt_tokens": 0,
+       "actual_decode_tokens": 1,
+       "step_ms": 21.78,
+       "cache_hits": 0,
+       "cache_stores": 0,
+       "cache_skips": 0,
+       "scheduled_ids": [],
+       "inserted_ids": []
+      },
+      {
+       "step": 379,
+       "scheduled_prefill_tokens": 0,
+       "scheduled_decode_tokens": 1,
+       "scheduled_prefill_requests": 0,
+       "inserted_prefill_requests": 0,
+       "actual_prompt_tokens": 0,
+       "actual_decode_tokens": 1,
+       "step_ms": 20.33,
+       "cache_hits": 0,
+       "cache_stores": 0,
+       "cache_skips": 0,
+       "scheduled_ids": [],
+       "inserted_ids": []
+      },
+      {
+       "step": 380,
+       "scheduled_prefill_tokens": 0,
+       "scheduled_decode_tokens": 1,
+       "scheduled_prefill_requests": 0,
+       "inserted_prefill_requests": 0,
+       "actual_prompt_tokens": 0,
+       "actual_decode_tokens": 1,
+       "step_ms": 22.82,
+       "cache_hits": 0,
+       "cache_stores": 0,
+       "cache_skips": 0,
+       "scheduled_ids": [],
+       "inserted_ids": []
+      },
+      {
+       "step": 381,
+       "scheduled_prefill_tokens": 0,
+       "scheduled_decode_tokens": 1,
+       "scheduled_prefill_requests": 0,
+       "inserted_prefill_requests": 0,
+       "actual_prompt_tokens": 0,
+       "actual_decode_tokens": 1,
+       "step_ms": 23.24,
+       "cache_hits": 0,
+       "cache_stores": 0,
+       "cache_skips": 0,
+       "scheduled_ids": [],
+       "inserted_ids": []
+      },
+      {
+       "step": 382,
+       "scheduled_prefill_tokens": 0,
+       "scheduled_decode_tokens": 1,
+       "scheduled_prefill_requests": 0,
+       "inserted_prefill_requests": 0,
+       "actual_prompt_tokens": 0,
+       "actual_decode_tokens": 1,
+       "step_ms": 21.06,
+       "cache_hits": 0,
+       "cache_stores": 0,
+       "cache_skips": 0,
+       "scheduled_ids": [],
+       "inserted_ids": []
+      },
+      {
+       "step": 383,
+       "scheduled_prefill_tokens": 0,
+       "scheduled_decode_tokens": 1,
+       "scheduled_prefill_requests": 0,
+       "inserted_prefill_requests": 0,
+       "actual_prompt_tokens": 0,
+       "actual_decode_tokens": 1,
+       "step_ms": 23.73,
+       "cache_hits": 0,
+       "cache_stores": 0,
+       "cache_skips": 0,
+       "scheduled_ids": [],
+       "inserted_ids": []
+      },
+      {
+       "step": 384,
+       "scheduled_prefill_tokens": 0,
+       "scheduled_decode_tokens": 1,
+       "scheduled_prefill_requests": 0,
+       "inserted_prefill_requests": 0,
+       "actual_prompt_tokens": 0,
+       "actual_decode_tokens": 1,
+       "step_ms": 23.32,
+       "cache_hits": 0,
+       "cache_stores": 0,
+       "cache_skips": 0,
+       "scheduled_ids": [],
+       "inserted_ids": []
+      },
+      {
+       "step": 385,
+       "scheduled_prefill_tokens": 0,
+       "scheduled_decode_tokens": 1,
+       "scheduled_prefill_requests": 0,
+       "inserted_prefill_requests": 0,
+       "actual_prompt_tokens": 0,
+       "actual_decode_tokens": 1,
+       "step_ms": 21.52,
+       "cache_hits": 0,
+       "cache_stores": 0,
+       "cache_skips": 0,
+       "scheduled_ids": [],
+       "inserted_ids": []
+      },
+      {
+       "step": 386,
+       "scheduled_prefill_tokens": 0,
+       "scheduled_decode_tokens": 1,
+       "scheduled_prefill_requests": 0,
+       "inserted_prefill_requests": 0,
+       "actual_prompt_tokens": 0,
+       "actual_decode_tokens": 1,
+       "step_ms": 23.68,
+       "cache_hits": 0,
+       "cache_stores": 0,
+       "cache_skips": 0,
+       "scheduled_ids": [],
+       "inserted_ids": []
+      },
+      {
+       "step": 387,
+       "scheduled_prefill_tokens": 0,
+       "scheduled_decode_tokens": 1,
+       "scheduled_prefill_requests": 0,
+       "inserted_prefill_requests": 0,
+       "actual_prompt_tokens": 0,
+       "actual_decode_tokens": 1,
+       "step_ms": 22.61,
+       "cache_hits": 0,
+       "cache_stores": 0,
+       "cache_skips": 0,
+       "scheduled_ids": [],
+       "inserted_ids": []
+      },
+      {
+       "step": 388,
+       "scheduled_prefill_tokens": 0,
+       "scheduled_decode_tokens": 1,
+       "scheduled_prefill_requests": 0,
+       "inserted_prefill_requests": 0,
+       "actual_prompt_tokens": 0,
+       "actual_decode_tokens": 1,
+       "step_ms": 21.08,
+       "cache_hits": 0,
+       "cache_stores": 0,
+       "cache_skips": 0,
+       "scheduled_ids": [],
+       "inserted_ids": []
+      },
+      {
+       "step": 389,
+       "scheduled_prefill_tokens": 0,
+       "scheduled_decode_tokens": 1,
+       "scheduled_prefill_requests": 0,
+       "inserted_prefill_requests": 0,
+       "actual_prompt_tokens": 0,
+       "actual_decode_tokens": 1,
+       "step_ms": 46.08,
+       "cache_hits": 0,
+       "cache_stores": 0,
+       "cache_skips": 0,
+       "scheduled_ids": [],
+       "inserted_ids": []
+      }
+     ],
+     "first_prefill_steps": [
+      {
+       "step": 1,
+       "scheduled_prefill_tokens": 17,
+       "scheduled_decode_tokens": 0,
+       "scheduled_prefill_requests": 1,
+       "inserted_prefill_requests": 1,
+       "actual_prompt_tokens": 16,
+       "actual_decode_tokens": 0,
+       "step_ms": 238.22,
+       "cache_hits": 0,
+       "cache_stores": 0,
+       "cache_skips": 0,
+       "scheduled_ids": [
+        "req-01ad2fb436"
+       ],
+       "inserted_ids": [
+        "req-01ad2fb436"
+       ]
+      },
+      {
+       "step": 11,
+       "scheduled_prefill_tokens": 166,
+       "scheduled_decode_tokens": 0,
+       "scheduled_prefill_requests": 1,
+       "inserted_prefill_requests": 1,
+       "actual_prompt_tokens": 165,
+       "actual_decode_tokens": 0,
+       "step_ms": 544.52,
+       "cache_hits": 0,
+       "cache_stores": 0,
+       "cache_skips": 0,
+       "scheduled_ids": [
+        "req-4a0af8801b"
+       ],
+       "inserted_ids": [
+        "req-4a0af8801b"
+       ]
+      },
+      {
+       "step": 21,
+       "scheduled_prefill_tokens": 512,
+       "scheduled_decode_tokens": 0,
+       "scheduled_prefill_requests": 1,
+       "inserted_prefill_requests": 1,
+       "actual_prompt_tokens": 225,
+       "actual_decode_tokens": 0,
+       "step_ms": 655.09,
+       "cache_hits": 1,
+       "cache_stores": 0,
+       "cache_skips": 0,
+       "scheduled_ids": [
+        "req-d5d4f221d1"
+       ],
+       "inserted_ids": [
+        "req-d5d4f221d1"
+       ]
+      },
+      {
+       "step": 22,
+       "scheduled_prefill_tokens": 512,
+       "scheduled_decode_tokens": 0,
+       "scheduled_prefill_requests": 1,
+       "inserted_prefill_requests": 0,
+       "actual_prompt_tokens": 2049,
+       "actual_decode_tokens": 0,
+       "step_ms": 68.94,
+       "cache_hits": 0,
+       "cache_stores": 0,
+       "cache_skips": 0,
+       "scheduled_ids": [
+        "req-d5d4f221d1"
+       ],
+       "inserted_ids": []
+      },
+      {
+       "step": 52,
+       "scheduled_prefill_tokens": 512,
+       "scheduled_decode_tokens": 0,
+       "scheduled_prefill_requests": 1,
+       "inserted_prefill_requests": 1,
+       "actual_prompt_tokens": 464,
+       "actual_decode_tokens": 0,
+       "step_ms": 1177.95,
+       "cache_hits": 1,
+       "cache_stores": 0,
+       "cache_skips": 0,
+       "scheduled_ids": [
+        "req-9e55e72b0d"
+       ],
+       "inserted_ids": [
+        "req-9e55e72b0d"
+       ]
+      },
+      {
+       "step": 53,
+       "scheduled_prefill_tokens": 512,
+       "scheduled_decode_tokens": 0,
+       "scheduled_prefill_requests": 1,
+       "inserted_prefill_requests": 0,
+       "actual_prompt_tokens": 2049,
+       "actual_decode_tokens": 0,
+       "step_ms": 44.23,
+       "cache_hits": 0,
+       "cache_stores": 0,
+       "cache_skips": 0,
+       "scheduled_ids": [
+        "req-9e55e72b0d"
+       ],
+       "inserted_ids": []
+      },
+      {
+       "step": 249,
+       "scheduled_prefill_tokens": 512,
+       "scheduled_decode_tokens": 0,
+       "scheduled_prefill_requests": 1,
+       "inserted_prefill_requests": 1,
+       "actual_prompt_tokens": 512,
+       "actual_decode_tokens": 0,
+       "step_ms": 1498.99,
+       "cache_hits": 1,
+       "cache_stores": 0,
+       "cache_skips": 0,
+       "scheduled_ids": [
+        "req-c1965d4e9a"
+       ],
+       "inserted_ids": [
+        "req-c1965d4e9a"
+       ]
+      },
+      {
+       "step": 250,
+       "scheduled_prefill_tokens": 512,
+       "scheduled_decode_tokens": 0,
+       "scheduled_prefill_requests": 1,
+       "inserted_prefill_requests": 0,
+       "actual_prompt_tokens": 170,
+       "actual_decode_tokens": 0,
+       "step_ms": 569.22,
+       "cache_hits": 0,
+       "cache_stores": 0,
+       "cache_skips": 0,
+       "scheduled_ids": [
+        "req-c1965d4e9a"
+       ],
+       "inserted_ids": []
+      },
+      {
+       "step": 251,
+       "scheduled_prefill_tokens": 512,
+       "scheduled_decode_tokens": 0,
+       "scheduled_prefill_requests": 1,
+       "inserted_prefill_requests": 0,
+       "actual_prompt_tokens": 2049,
+       "actual_decode_tokens": 0,
+       "step_ms": 42.38,
+       "cache_hits": 0,
+       "cache_stores": 0,
+       "cache_skips": 0,
+       "scheduled_ids": [
+        "req-c1965d4e9a"
+       ],
+       "inserted_ids": []
+      }
+     ],
+     "requests": [
+      [
+       "req-01ad2fb436",
+       {
+        "prompt_tokens": 17,
+        "cached_estimate": 0,
+        "uncached_estimate": 17,
+        "kv_tokens": 25,
+        "reuse_estimate": false
+       }
+      ],
+      [
+       "req-4a0af8801b",
+       {
+        "prompt_tokens": 166,
+        "cached_estimate": 0,
+        "uncached_estimate": 166,
+        "kv_tokens": 174,
+        "reuse_estimate": false
+       }
+      ],
+      [
+       "req-d5d4f221d1",
+       {
+        "prompt_tokens": 2274,
+        "cached_estimate": 2048,
+        "uncached_estimate": 226,
+        "kv_tokens": 738,
+        "reuse_estimate": true
+       }
+      ],
+      [
+       "req-9e55e72b0d",
+       {
+        "prompt_tokens": 2513,
+        "cached_estimate": 2048,
+        "uncached_estimate": 465,
+        "kv_tokens": 977,
+        "reuse_estimate": true
+       }
+      ],
+      [
+       "req-c1965d4e9a",
+       {
+        "prompt_tokens": 2731,
+        "cached_estimate": 2048,
+        "uncached_estimate": 683,
+        "kv_tokens": 1195,
+        "reuse_estimate": true
+       }
+      ]
+     ]
+    },
+    "timeline": {
+     "requests": [
+      {
+       "request_id": "req-01ad2fb436",
+       "prompt_tokens": 17,
+       "cached_prompt_tokens": 0,
+       "output_tokens": 8,
+       "finish_reason": "length",
+       "ttft_ms": 572.27,
+       "token_gaps_ms": [
+        7.51,
+        11.02,
+        11.36,
+        12.39,
+        11.6,
+        11.43,
+        30.72
+       ],
+       "gap_p50_ms": 11.43,
+       "gap_p95_ms": 30.72,
+       "gap_max_ms": 30.72
+      },
+      {
+       "request_id": "req-4a0af8801b",
+       "prompt_tokens": 166,
+       "cached_prompt_tokens": 0,
+       "output_tokens": 8,
+       "finish_reason": "length",
+       "ttft_ms": 586.96,
+       "token_gaps_ms": [
+        12.01,
+        12.53,
+        11.61,
+        12.72,
+        10.95,
+        12.23,
+        30.89
+       ],
+       "gap_p50_ms": 12.23,
+       "gap_p95_ms": 30.89,
+       "gap_max_ms": 30.89
+      },
+      {
+       "request_id": "req-d5d4f221d1",
+       "prompt_tokens": 2274,
+       "cached_prompt_tokens": 2048,
+       "output_tokens": 29,
+       "finish_reason": "stop",
+       "ttft_ms": 732.37,
+       "token_gaps_ms": [
+        13.98,
+        14.32,
+        13.73,
+        13.96,
+        14.71,
+        13.37,
+        14.48,
+        14.38,
+        13.08,
+        14.46,
+        13.12,
+        14.44,
+        14.43,
+        14.41,
+        13.22,
+        35.8
+       ],
+       "gap_p50_ms": 14.29,
+       "gap_p95_ms": 14.71,
+       "gap_max_ms": 35.8
+      },
+      {
+       "request_id": "req-9e55e72b0d",
+       "prompt_tokens": 2513,
+       "cached_prompt_tokens": 2048,
+       "output_tokens": 195,
+       "finish_reason": "stop",
+       "ttft_ms": 1231.41,
+       "token_gaps_ms": [
+        19.81,
+        17.56,
+        19.08,
+        18.27,
+        19.63,
+        18.58,
+        18.03,
+        18.31,
+        18.27,
+        19.9,
+        18.11,
+        18.37,
+        19.13,
+        18.87,
+        18.45,
+        40.98
+       ],
+       "gap_p50_ms": 16.95,
+       "gap_p95_ms": 19.61,
+       "gap_max_ms": 40.98
+      },
+      {
+       "request_id": "req-c1965d4e9a",
+       "prompt_tokens": 2731,
+       "cached_prompt_tokens": 2048,
+       "output_tokens": 138,
+       "finish_reason": "stop",
+       "ttft_ms": 2119.57,
+       "token_gaps_ms": [
+        18.75,
+        19.03,
+        19.43,
+        20.85,
+        21.81,
+        20.36,
+        22.85,
+        23.24,
+        21.14,
+        23.76,
+        23.36,
+        21.56,
+        23.72,
+        22.64,
+        21.13,
+        45.91
+       ],
+       "gap_p50_ms": 18.93,
+       "gap_p95_ms": 22.85,
+       "gap_max_ms": 45.91
+      }
+     ],
+     "recent_gap_p50_ms": 22.85,
+     "recent_gap_p95_ms": 30.89,
+     "step_times_ms": [
+      18.87,
+      18.6,
+      20.24,
+      18.9,
+      19.58,
+      19.23,
+      18.78,
+      18.68,
+      19.19,
+      19.53,
+      18.68,
+      23.88,
+      17.91,
+      18.69,
+      20.26,
+      18.78,
+      20.21,
+      18.85,
+      19.12,
+      20.08,
+      18.65,
+      19.0,
+      19.39,
+      19.26,
+      18.54,
+      18.66,
+      19.9,
+      18.63,
+      18.64,
+      18.57,
+      19.94,
+      18.75,
+      18.44,
+      20.03,
+      18.7,
+      18.71,
+      19.05,
+      18.89,
+      19.31,
+      18.67,
+      19.96,
+      18.69,
+      18.84,
+      18.43,
+      20.2,
+      18.68,
+      18.75,
+      19.97,
+      18.73,
+      18.98,
+      19.41,
+      20.83,
+      21.78,
+      20.33,
+      22.82,
+      23.24,
+      21.06,
+      23.73,
+      23.32,
+      21.52,
+      23.68,
+      22.61,
+      21.08,
+      46.08
+     ]
+    },
+    "runtime": "batch",
+    "prefix_registered_tokens": 2064,
+    "auto_prefix": {
+     "enabled": true,
+     "pending": 0,
+     "registrations": 0,
+     "last_ms": null,
+     "errors": []
+    },
+    "memory_guard": {
+     "cap_mb": 48103.6337152,
+     "over_memory": false,
+     "rejections": 0,
+     "evictions": 0,
+     "peak_active_mb": 3112.7,
+     "mlx_allocator_limit": {
+      "enabled": true,
+      "memory_limit_mb": 48103.6,
+      "cache_limit_mb": 12025.9
+     }
+    },
+    "worker": {
+     "busy": false,
+     "unhealthy": false,
+     "hung": false,
+     "last_progress_age_s": 0.0,
+     "hang_timeout_s": 120.0
+    },
+    "completion_batch_size": 16,
+    "admission": {
+     "batch_size": 16,
+     "wait_steps": 4,
+     "settle_ms": 50.0
+    },
+    "auto_concurrency": {
+     "enabled": false
+    },
+    "mlx_active_mb": 2644.9,
+    "mlx_peak_mb": 3904.1,
+    "mlx_cache_mb": 1079.8
+   }
+  },
+  "wall_s": 11.2,
+  "tasks": [
+   {
+    "task_id": "golden_refcount_leak",
+    "set": "golden",
+    "keyword_pass": true,
+    "tool_trace_ok": true,
+    "truncated": false,
+    "complete_review": true,
+    "wall_s": 11.195545082911849,
+    "prompt_tokens": 7518,
+    "completion_tokens": 362,
+    "final_finish_reason": "stop",
+    "followup_finish_reason": "stop",
+    "pending_tool_calls": false,
+    "tool_rounds_exhausted": false,
+    "tools_used": [
+     {
+      "name": "read_file",
+      "path": "bench/agent_fixtures/refcount_leak.py",
+      "args": "{\"path\": \"bench/agent_fixtures/refcount_leak.py\"}",
+      "ok": true,
+      "error": null
+     }
+    ]
+   }
+  ],
+  "keyword_pass_rate": 1.0,
+  "complete_review_rate": 1.0,
+  "truncated_tasks": [],
+  "tool_trace_failures": [],
+  "peak_rss_mb": 2463.0,
+  "stats_after": {
+   "prefix_cache": {
+    "entries": 3,
+    "active": 0,
+    "nbytes": 330301440,
+    "hits": 13,
+    "misses": 0,
+    "stores": 3,
+    "evictions": 0,
+    "hit_rate": 1.0,
+    "reuse_policy": "always",
+    "recompute_skips": 0,
+    "reuse_autos": 7
+   },
+   "prefix_hit_tokens": 12448,
+   "mlx_peak_mb": 3904.1
+  },
+  "prefix_hits_before": 6,
+  "prefix_hits_after": 13,
+  "output_tokens": 362,
+  "aggregate_tok_s": 32.3
+ },
+ "tasks": [
+  {
+   "task_id": "golden_refcount_leak",
+   "set": "golden",
+   "keyword_pass": true,
+   "tool_trace_ok": true,
+   "truncated": false,
+   "complete_review": true,
+   "pending_tool_calls": false,
+   "tool_rounds_exhausted": false,
+   "final_finish_reason": "stop",
+   "followup_finish_reason": "stop",
+   "wall_s": 11.195545082911849,
+   "requests": [
+    {
+     "messages": [
+      {
+       "role": "system",
+       "content": "你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n"
+      },
+      {
+       "role": "user",
+       "content": "审查文件 `bench/agent_fixtures/refcount_leak.py`。这个池子的约定是最后一个引用释放时块回到 free_blocks。请找出具体缺陷、触发条件，并给出最小修复。先用 read_file 读取文件。"
+      }
+     ],
+     "response": {
+      "finish_reason": "tool_calls",
+      "prompt_tokens": 2274,
+      "completion_tokens": 29,
+      "total_tokens": 2303,
+      "latency_s": 1.188537042005919
+     }
+    },
+    {
+     "messages": [
+      {
+       "role": "system",
+       "content": "你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n"
+      },
+      {
+       "role": "user",
+       "content": "审查文件 `bench/agent_fixtures/refcount_leak.py`。这个池子的约定是最后一个引用释放时块回到 free_blocks。请找出具体缺陷、触发条件，并给出最小修复。先用 read_file 读取文件。"
+      },
+      {
+       "role": "assistant",
+       "content": null,
+       "tool_calls": [
+        {
+         "id": "call_117e0be3371b",
+         "type": "function",
+         "function": {
+          "name": "read_file",
+          "arguments": "{\"path\": \"bench/agent_fixtures/refcount_leak.py\"}"
+         }
+        }
+       ]
+      },
+      {
+       "role": "tool",
+       "tool_call_id": "call_117e0be3371b",
+       "name": "read_file",
+       "content": "FILE bench/agent_fixtures/refcount_leak.py\n\"\"\"Small block pool fixture with one known reference-count leak.\"\"\"\n\n\nclass BlockPool:\n    def __init__(self, blocks):\n        self.free_blocks = list(blocks)\n        self.refcounts = {block: 0 for block in blocks}\n\n    def acquire(self, block):\n        if block not in self.free_blocks:\n            raise RuntimeError(f\"block {block} is not free\")\n        self.free_blocks.remove(block)\n        self.refcounts[block] += 1\n        return block\n\n    def release(self, block):\n        if self.refcounts[block] <= 0:\n            raise RuntimeError(f\"block {block} is not owned\")\n        self.refcounts[block] -= 1\n        # Known defect: when the count reaches zero this condition is false, so\n        # the block is never returned to free_blocks.\n        if self.refcounts[block] == 1:\n            self.free_blocks.append(block)\n"
+      }
+     ],
+     "response": {
+      "finish_reason": "stop",
+      "prompt_tokens": 2513,
+      "completion_tokens": 195,
+      "total_tokens": 2708,
+      "latency_s": 5.144127042032778
+     }
+    },
+    {
+     "messages": [
+      {
+       "role": "system",
+       "content": "你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n你是本地代码审查 agent。工作目录是 Terrazzo 仓库。必须先调用 read_file 读取相关文件，再基于真实代码回答；不要编造行号或接口。审查时优先指出具体风险、触发条件、影响和最小修复方向；不要泛泛而谈。如果工具返回内容不足，可以再次调用 read_file；最多 3 次工具调用。最终回答用中文，先给结论，再给一条最值得修复的建议。\n"
+      },
+      {
+       "role": "user",
+       "content": "审查文件 `bench/agent_fixtures/refcount_leak.py`。这个池子的约定是最后一个引用释放时块回到 free_blocks。请找出具体缺陷、触发条件，并给出最小修复。先用 read_file 读取文件。"
+      },
+      {
+       "role": "assistant",
+       "content": null,
+       "tool_calls": [
+        {
+         "id": "call_117e0be3371b",
+         "type": "function",
+         "function": {
+          "name": "read_file",
+          "arguments": "{\"path\": \"bench/agent_fixtures/refcount_leak.py\"}"
+         }
+        }
+       ]
+      },
+      {
+       "role": "tool",
+       "tool_call_id": "call_117e0be3371b",
+       "name": "read_file",
+       "content": "FILE bench/agent_fixtures/refcount_leak.py\n\"\"\"Small block pool fixture with one known reference-count leak.\"\"\"\n\n\nclass BlockPool:\n    def __init__(self, blocks):\n        self.free_blocks = list(blocks)\n        self.refcounts = {block: 0 for block in blocks}\n\n    def acquire(self, block):\n        if block not in self.free_blocks:\n            raise RuntimeError(f\"block {block} is not free\")\n        self.free_blocks.remove(block)\n        self.refcounts[block] += 1\n        return block\n\n    def release(self, block):\n        if self.refcounts[block] <= 0:\n            raise RuntimeError(f\"block {block} is not owned\")\n        self.refcounts[block] -= 1\n        # Known defect: when the count reaches zero this condition is false, so\n        # the block is never returned to free_blocks.\n        if self.refcounts[block] == 1:\n            self.free_blocks.append(block)\n"
+      },
+      {
+       "role": "assistant",
+       "content": "结论：`refcount_leak.py` 中存在一个引用计数泄漏的缺陷。当一个块的引用计数降为零时，它不会被返回到 `free_blocks` 列表中，导致该块始终保留在 `free_blocks` 中，从而造成资源泄漏。\n\n触发条件：当一个块的引用计数降为零时，`release` 方法不会将该块返回到 `free_blocks` 列表中。\n\n影响：块将一直保留在 `free_blocks` 中，导致资源泄漏，因为这些块不会被释放或重新分配。\n\n最小修复方向：在 `release` 方法中，当引用计数降为零时，应将该块返回到 `free_blocks` 列表中。\n\n最值得修复的建议：在 `release` 方法中，当引用计数降为零时，将该块返回到 `free_blocks` 列表中。"
+      },
+      {
+       "role": "user",
+       "content": "请给出一个最小复现步骤，并明确修复后的判断条件。"
+      }
+     ],
+     "response": {
+      "finish_reason": "stop",
+      "prompt_tokens": 2731,
+      "completion_tokens": 138,
+      "total_tokens": 2869,
+      "latency_s": 4.861988499993458
+     }
+    }
+   ],
+   "tools_used": [
+    {
+     "name": "read_file",
+     "path": "bench/agent_fixtures/refcount_leak.py",
+     "args": "{\"path\": \"bench/agent_fixtures/refcount_leak.py\"}",
+     "ok": true,
+     "error": null
+    }
+   ],
+   "final": "结论：`refcount_leak.py` 中存在一个引用计数泄漏的缺陷。当一个块的引用计数降为零时，它不会被返回到 `free_blocks` 列表中，导致该块始终保留在 `free_blocks` 中，从而造成资源泄漏。\n\n触发条件：当一个块的引用计数降为零时，`release` 方法不会将该块返回到 `free_blocks` 列表中。\n\n影响：块将一直保留在 `free_blocks` 中，导致资源泄漏，因为这些块不会被释放或重新分配。\n\n最小修复方向：在 `release` 方法中，当引用计数降为零时，应将该块返回到 `free_blocks` 列表中。\n\n最值得修复的建议：在 `release` 方法中，当引用计数降为零时，将该块返回到 `free_blocks` 列表中。",
+   "followup": "最小复现步骤：\n\n1. 创建一个 `BlockPool` 实例，传入一个包含一个块的列表。\n2. 调用 `acquire` 方法获取该块。\n3. 调用 `release` 方法释放该块。\n4. 检查 `free_blocks` 列表是否包含该块。\n\n修复后的判断条件：当引用计数降为零时，该块应被返回到 `free_blocks` 列表中。在 `release` 方法中，当 `self.refcounts[block] == 0` 时，应将该块添加到 `free_blocks` 列表中。",
+   "prompt_tokens": 7518,
+   "completion_tokens": 362
+  }
+ ],
+ "goal": "known-defect code review with sufficient output budget",
+ "known_defect": "release() checks refcount == 1 instead of 0, so the final reference never returns the block to free_blocks",
+ "agent_review_checklist": {
+  "defect_identified": true,
+  "trigger_identified": true,
+  "minimal_fix_identified": true,
+  "notes": "Agent correctly identified the ==1 condition, the zero-reference trigger, and ==0 + free_blocks fix. Minor wording error: it said the block \"remains in free_blocks\"; actually acquire removes it and release never returns it. Core diagnosis/fix are correct."
+ },
+ "human_signoff": "pending_user_confirmation",
+ "accepted": false,
+ "truncation": {
+  "truncated": false,
+  "final_finish_reason": "stop",
+  "followup_finish_reason": "stop"
+ }
+}

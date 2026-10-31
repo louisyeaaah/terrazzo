@@ -57,6 +57,13 @@ TASKS = [
      "prompt": "审查文件 `terrazzo/server.py` 的请求超时、取消和失败恢复路径，指出一个会让请求卡住或统计失真的具体风险。先用 read_file 读取这个路径。",
      "followup": "取消后应该释放哪些执行器/调度器状态？",
      "rubric": [("abort", "取消", "timeout", "超时")]},
+    {"id": "golden_refcount_leak", "set": "golden",
+     "file": "bench/agent_fixtures/refcount_leak.py",
+     "prompt": "审查文件 `bench/agent_fixtures/refcount_leak.py`。这个池子的约定是最后一个引用释放时块回到 free_blocks。请找出具体缺陷、触发条件，并给出最小修复。先用 read_file 读取文件。",
+     "followup": "请给出一个最小复现步骤，并明确修复后的判断条件。",
+     "rubric": [("== 1", "==1", "泄漏", "leak", "never"),
+                ("最后一个引用", "last reference", "归零", "zero", "release"),
+                ("== 0", "==0", "free_blocks", "free list", "改为 0", "改为0")]},
 ]
 
 
@@ -118,6 +125,35 @@ def _tool_message(call: dict) -> dict:
             "name": fn.get("name", "read_file"), "content": content}
 
 
+def classify_tool_trace(task: dict, tools_used: list[dict]) -> bool:
+    """Shared online/replay rule: read the requested file successfully.
+
+    Extra files are allowed (a reviewer may inspect related code); unknown tools,
+    failed reads and missing requested-file reads are not.
+    """
+    expected = task.get("file")
+    def same_path(value):
+        if not expected or not isinstance(value, str):
+            return False
+        try:
+            return Path(value).as_posix() == Path(expected).as_posix()
+        except Exception:
+            return False
+    if not tools_used:
+        return False
+    if not all(t.get("name") == "read_file" and t.get("ok") for t in tools_used):
+        return False
+    def tool_path(t):
+        if t.get("path") is not None:
+            return t.get("path")
+        try:
+            parsed = json.loads(t.get("args") or "{}")
+            return parsed.get("path") if isinstance(parsed, dict) else None
+        except Exception:
+            return None
+    return any(same_path(tool_path(t)) for t in tools_used)
+
+
 def run_task(base: str, model: str, system: str, task: dict, max_tokens: int,
              max_tool_rounds: int) -> dict:
     messages = [{"role": "system", "content": system},
@@ -176,20 +212,7 @@ def run_task(base: str, model: str, system: str, task: dict, max_tokens: int,
     text = (final + "\n" + r2["content"]).lower()
     rubric = [[w.lower() for w in group] for group in task["rubric"]]
     keyword_pass = all(any(w in text for w in group) for group in rubric)
-    expected_file = task.get("file")
-    def _same_path(value):
-        if not expected_file or not isinstance(value, str):
-            return False
-        try:
-            return Path(value).as_posix() == Path(expected_file).as_posix()
-        except Exception:
-            return False
-    expected_read = any(t.get("name") == "read_file" and _same_path(t.get("path"))
-                        and t.get("ok") for t in tools_used)
-    tool_trace_ok = (expected_read and bool(tools_used)
-                     and all(t.get("name") == "read_file" and t.get("ok")
-                             for t in tools_used)
-                     and all(_same_path(t.get("path")) for t in tools_used))
+    tool_trace_ok = classify_tool_trace(task, tools_used)
     finish_reasons = [final_r.get("finish_reason") if final_r else None,
                       r2.get("finish_reason")]
     truncated = any(x == "length" for x in finish_reasons)
@@ -261,7 +284,7 @@ def main() -> int:
     ap.add_argument("--base", required=True)
     ap.add_argument("--model", default="terrazzo")
     ap.add_argument("--label", required=True)
-    ap.add_argument("--task-set", choices=["tune", "holdout", "all"], default="all")
+    ap.add_argument("--task-set", choices=["tune", "holdout", "golden", "all"], default="all")
     ap.add_argument("--mode", choices=["agent", "replay"], default="agent")
     ap.add_argument("--recording", default=None,
                     help="replay mode: JSON produced by an agent run")

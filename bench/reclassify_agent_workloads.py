@@ -4,7 +4,7 @@ import json, sys
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "bench"))
-from agent_review_workflow import TASKS  # noqa: E402
+from agent_review_workflow import TASKS, classify_tool_trace  # noqa: E402
 TASK_MAP = {t["id"]: t for t in TASKS}
 
 
@@ -15,29 +15,7 @@ def classify(task_rec, task_def):
     text = ((task_rec.get("final") or "") + "\n" + (task_rec.get("followup") or "")).lower()
     rubric = [[w.lower() for w in g] for g in task_def["rubric"]]
     keyword_pass = bool(text) and all(any(w in text for w in g) for g in rubric)
-    tool_ok = True
-    expected = task_def.get("file")
-    expected_read = False
-    for r in reqs:
-        for msg in r.get("messages", []):
-            if msg.get("role") == "tool":
-                content = str(msg.get("content") or "")
-                if content.startswith("ERROR:"):
-                    tool_ok = False
-        for t in task_rec.get("tools_used", []):
-            args = str(t.get("args") or "")
-            try:
-                parsed = json.loads(args) if args else {}
-            except Exception:
-                parsed = {}
-            path = parsed.get("path") if isinstance(parsed, dict) else None
-            if (t.get("name") == "read_file" and expected
-                    and isinstance(path, str)
-                    and Path(path).as_posix() == Path(expected).as_posix()):
-                expected_read = True
-    tool_trace_ok = bool(expected_read and tool_ok
-                         and all(t.get("name") == "read_file" for t in
-                                 task_rec.get("tools_used", [])))
+    tool_trace_ok = classify_tool_trace(task_def, task_rec.get("tools_used", []))
     finish_reasons = [final_req.get("finish_reason"), follow_req.get("finish_reason")]
     pending = any(x == "tool_calls" for x in finish_reasons)
     truncated = any(x == "length" for x in finish_reasons)

@@ -1848,7 +1848,7 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
   cache 方法是否存在，失败给出明确错误；`TERRAZZO_SKIP_MLX_LM_CHECK=1` 仅用于试验新版本。
 - `docs/COMPATIBILITY.md` 记录测试矩阵与不支持的平台。
 
-**当前测试**：核心 273 个（1 skipped）+ 实验内核 31 个；CI 两个主 job + 手动模型 E2E job（见 workflow）。
+**当前测试**：核心 274 个（1 skipped）+ 实验内核 31 个；CI 两个主 job + 手动模型 E2E job（见 workflow）。
 
 ## 45. Tools / function calling（2026-10-27）
 
@@ -1874,7 +1874,7 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
 
 关键修复：带 tools 时默认 `enable_thinking=false`（原来 `<think>` 把 token 预算吃光，
 128 token 内根本到不了 `<tool_call>`）；OpenAI 报文中 assistant `content:null` 需规范化为空串，
-否则 Jinja 模板抛 `'NoneType' is not iterable`。全套 **273 个核心测试 OK（1 skipped）+ 31 个实验内核测试**（§47 后）。
+否则 Jinja 模板抛 `'NoneType' is not iterable`。全套 **274 个核心测试 OK（1 skipped）+ 31 个实验内核测试**（§47 后）。
 
 ## 47. 残余风险修复（2026-10-27）
 
@@ -1900,8 +1900,8 @@ p95 比旧口径差（真实多轮的回答会进入下一轮 prompt）；旧 §
 - Ollama 原生模式默认 `think=false`：qwen3 在 Ollama 默认开启思考会把 content 吃空、多轮历史失真。
 
 **修复后验证（commit `fbbdcb0`）**：
-- 本地：核心 **273 tests（1 skipped）**、实验内核 **31 tests（3 skipped）**、纯 Python（MLX blocked）
-  **171 run / 0 fail / 25 skip**。
+- 本地：核心 **274 tests（1 skipped）**、实验内核 **31 tests（3 skipped）**、纯 Python（MLX blocked）
+  **172 run / 0 fail / 25 skip**。
 - CI（[run 40426254576](https://github.com/louisyeaaah/terrazzo/actions/runs/40426254576)）：
   `Core tests (pure Python, MLX blocked)` ✅、`macOS (MLX) import + tests`（含 Metal kernel 与
   experiments）✅；`Model E2E` 仅在手动 `workflow_dispatch` 时运行（本次按预期 skipped）。

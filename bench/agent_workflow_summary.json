@@ -292,6 +292,16 @@
     "prefix_hit_tokens": 18432,
     "mlx_peak_mb": 4514.2
    }
+  },
+  "golden_review": {
+   "label": "golden-cache-on",
+   "task_set": "golden",
+   "wall_s": 11.2,
+   "keyword_pass_rate": 1.0,
+   "complete_review_rate": 1.0,
+   "truncated_tasks": [],
+   "peak_rss_mb": 2463.0,
+   "output_tokens": 362
   }
  },
  "reliability": {
@@ -353,5 +363,10 @@
   "RSS lower for cap1 but MLX peak same as p4; not unified-memory proof",
   "Ollama OpenAI endpoint did not emit tool calls",
   "Reliability input-error/abort/eviction observed; final active missing, executor failure recovery not covered."
- ]
+ ],
+ "golden_review": {
+  "fixture": "bench/agent_fixtures/refcount_leak.py",
+  "human_signoff": "pending_user_confirmation",
+  "accepted": false
+ }
 }
