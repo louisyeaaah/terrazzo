@@ -1,6 +1,7 @@
 # Agent workflow acceptance protocol (pre-registered)
 
-Status: first run completed; reliability/cold-start follow-ups still open.
+Status: first run completed; reliability and eviction covered; repeated idle runs
+and Ollama native tool calling remain open.
 
 ## User and scenario
 
@@ -22,10 +23,12 @@ tasks contain tool returns, a follow-up, and different input lengths.
 
 1. Terrazzo cache off: `--no-prefix-cache --scheduler-policy fifo --profile agent`.
 2. Terrazzo cache on: same + `/v1/prewarm` of the exact shared system prompt.
-3. Terrazzo cap1: cache on, `--max-num-seqs 1 --completion-batch-size 1
+3. Terrazzo p4: cache on, `--max-num-seqs 16 --completion-batch-size 16
+   --prefill-batch-size 4 --prefill-step-size 512`.
+4. Terrazzo cap1: cache on, `--max-num-seqs 1 --completion-batch-size 1
    --prefill-batch-size 1 --prefill-step-size 512`.
-4. Native mlx-lm server, same model.
-5. Ollama `qwen3:4b` (different runtime/quant; OpenAI-compatible endpoint did not
+5. Native mlx-lm server, same model.
+6. Ollama `qwen3:4b` (different runtime/quant; OpenAI-compatible endpoint did not
    emit tool calls, so it is excluded from quality comparison).
 
 Only existing Terrazzo parameters are changed. Prewarm/model-load time is
@@ -50,7 +53,8 @@ scenario" and stop expanding performance features.
 
 - multi-turn agent execution: yes (tasks above).
 - fixed replay: yes.
-- cancellation: not yet covered.
-- cache eviction: not yet covered.
-- failure recovery: not yet covered.
-- cold start vs steady-state: prewarm 8.1s observed; full cold-start matrix not yet.
+- cancellation: covered (`agent_reliability.py`; abort + recovery).
+- cache eviction: covered (4 distinct prewarms under 400 MB; evictions observed).
+- failure recovery: covered (malformed request 400 + next request succeeds).
+- cold start vs steady-state: Terrazzo startup 3.04 s + prewarm 7.85 s; task timings
+  are steady-state. Native baseline cold start not measured.

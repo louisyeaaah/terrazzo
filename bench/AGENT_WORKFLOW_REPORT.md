@@ -22,6 +22,7 @@ Full agent, tuning tasks (3 tasks):
 |---|---:|---:|---:|---:|---:|
 | Terrazzo cache off | 228.5 s | 3/3 | 2470 MB | 0 | +96.6% time |
 | Terrazzo cache on | 149.3 s | 3/3 | 2472 MB | 18 | +28.5% time |
+| Terrazzo cache on p4 | **112.9 s** | 3/3 | 2470 MB | 18 | **-2.8% time** |
 | Terrazzo cap1 | 169.8 s | 3/3 | **1489 MB** | 18 | +46.1% time |
 | native mlx-lm | **116.2 s** | 3/3 | 2526 MB | — | baseline |
 
@@ -31,6 +32,7 @@ Full agent, holdout tasks (2 tasks):
 |---|---:|---:|---:|
 | Terrazzo cache off | 239.9 s | 2/2 | 2466 MB |
 | Terrazzo cache on | 167.3 s | 2/2 | 2466 MB |
+| Terrazzo cache on p4 | 127.5 s | 2/2 | 2475 MB |
 | native mlx-lm | **105.2 s** | 2/2 | 2510 MB |
 
 Fixed replay:
@@ -50,10 +52,14 @@ Cache on vs cache off is a real, repeatable-direction benefit: -34.7% tuning,
 
 - Terrazzo cache-on is clearly better than Terrazzo cache-off, so the cache is
   useful inside Terrazzo.
-- Native mlx-lm is materially faster (tune 116s vs 149s; holdout 105s vs 167s;
-  replay 52s vs 197s) with the same rubric success.
+- The tuned p4 config (cache on, cap16, prefill batch 4 / step 512) reaches
+  **112.9 s vs native 116.2 s** on tune tasks (-2.8%, within noise), but is
+  **127.5 s vs 105.2 s** on holdout (+21.2%). The direction is not stable and
+  does not clear the 15% task-time threshold.
 - Cap1 lowers peak RSS by ~41% vs native, but task time is ~46% worse; that is a
   memory-constrained tradeoff, not a default recommendation.
+- Replay still favors native (52.5 s vs 197.2 s); replay is not the same as full
+  agent execution, so it is supporting evidence, not the main decision.
 - Ollama's OpenAI-compatible endpoint did not call tools and scored 0/3; its
   native tool path was not completed in this round, so it is not used for a
   quality claim.
@@ -61,9 +67,10 @@ Cache on vs cache off is a real, repeatable-direction benefit: -34.7% tuning,
 ## Recommendation
 
 For this scenario, use **native mlx-lm** for latency-first local code review.
-If Terrazzo is already deployed, enable prefix cache + prewarm (`cache on`);
-choose cap1 only when memory is the binding constraint and the latency tradeoff is
-acceptable. Do not expand performance features until a different workflow shows
+If Terrazzo is already deployed, enable prefix cache + prewarm and try p4
+(`--max-num-seqs 16 --completion-batch-size 16 --prefill-batch-size 4
+--prefill-step-size 512`); choose cap1 only when memory is the binding constraint
+and the latency tradeoff is acceptable. Do not expand performance features until a different workflow shows
 a clear gap.
 
 ## Startup / replay
@@ -71,7 +78,9 @@ a clear gap.
 ```bash
 # Terrazzo cache-on (steady-state; prewarm separately)
 python -m terrazzo serve --model <qwen3-4b-4bit> --profile agent --no-thinking \
-  --prefix-reuse always --scheduler-policy fifo
+  --prefix-reuse always --scheduler-policy fifo \
+  --max-num-seqs 16 --completion-batch-size 16 \
+  --prefill-batch-size 4 --prefill-step-size 512
 curl -X POST http://127.0.0.1:PORT/v1/prewarm \
   -H 'Content-Type: application/json' -d '{"system":"<agent system prompt>"}'
 
@@ -84,9 +93,27 @@ python bench/agent_review_workflow.py --base http://127.0.0.1:PORT \
   --mode replay --recording bench/agent_workloads/tune_on.json --label replay
 ```
 
+## Reliability, cold start and eviction
+
+`bench/agent_reliability.py` (same Qwen3-4B server, small 400 MB prefix budget):
+
+| Check | Result |
+|---|---|
+| server startup to `/health` | 3.04 s |
+| prewarm system prefix | 7.85 s (2064 tokens) |
+| normal request | finish_reason length (max_tokens=16 cap) |
+| abort streaming request | `aborted=true`; next request `stop` |
+| malformed JSON | HTTP 400; next request `stop` |
+| prefix eviction (4 distinct prewarms) | evictions increased; active=0 |
+| final state | running=0, waiting=0; added=5, finished=5, aborted=1, failed=0 |
+
+Cold start is therefore **~10.9 s** (3.04 s server + 7.85 s prewarm) before the
+steady-state agent timings above; task timings exclude this prewarm.
+
 ## Open work
 
-- Repeat runs on an idle machine; current loadavg 3.4–6.2.
-- Add cancellation, cache-eviction and failure-recovery coverage.
-- Measure cold start with model load separated from prewarm.
-- Optionally complete Ollama native tool calling for a second cross-engine point.
+- Repeat runs on an idle machine; current loadavg 3.4–6.2 and one run/config.
+- Complete Ollama native tool calling for a second cross-engine quality point;
+  its OpenAI-compatible endpoint did not emit tool calls.
+- Full cold-start matrix for the native baseline (server start/model load) was not
+  measured; Terrazzo cold start is reported above.

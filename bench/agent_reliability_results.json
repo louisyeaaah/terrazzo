@@ -1,0 +1,41 @@
+{
+ "startup_s": 3.04,
+ "prewarm_ms": [
+  7848.6
+ ],
+ "checks": {
+  "normal": "length",
+  "abort": {
+   "aborted": true,
+   "request_id": "reliability-abort"
+  },
+  "after_abort": "stop",
+  "eviction": {
+   "entries": 1,
+   "evictions": 3,
+   "active": 0,
+   "nbytes": 304349184
+  },
+  "after_eviction": "stop",
+  "malformed_status": 400,
+  "after_malformed": "stop",
+  "stats": {
+   "running": 0,
+   "waiting": 0,
+   "request_stages": {
+    "added": 5,
+    "first_token": 5,
+    "finished": 5,
+    "aborted": 1,
+    "failed": 0
+   },
+   "prefix_cache": {
+    "hits": 7,
+    "evictions": 4,
+    "entries": 2
+   }
+  }
+ },
+ "prewarm_registered": true,
+ "ok": true
+}

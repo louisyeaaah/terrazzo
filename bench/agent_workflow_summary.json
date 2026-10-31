@@ -219,11 +219,114 @@
    "prefix_hits_before": null,
    "prefix_hits_after": null,
    "stats_after": {}
+  },
+  "tune_p4": {
+   "label": "cache-on-p4",
+   "base": "http://127.0.0.1:9370",
+   "model": "terrazzo",
+   "task_set": "tune",
+   "wall_s": 112.93,
+   "success_rate": 1.0,
+   "peak_rss_mb": 2470.0,
+   "output_tokens": 651,
+   "aggregate_tok_s": 5.8,
+   "prefix_hits_before": 0,
+   "prefix_hits_after": 18,
+   "stats_after": {
+    "prefix_cache": {
+     "entries": 2,
+     "active": 0,
+     "nbytes": 327942144,
+     "hits": 18,
+     "misses": 0,
+     "stores": 2,
+     "evictions": 0,
+     "hit_rate": 1.0,
+     "reuse_policy": "always",
+     "recompute_skips": 0,
+     "reuse_autos": 9
+    },
+    "prefix_hit_tokens": 18432,
+    "mlx_peak_mb": 4514.2
+   }
+  },
+  "holdout_p4": {
+   "label": "cache-on-p4",
+   "base": "http://127.0.0.1:9371",
+   "model": "terrazzo",
+   "task_set": "holdout",
+   "wall_s": 127.5,
+   "success_rate": 1.0,
+   "peak_rss_mb": 2475.0,
+   "output_tokens": 433,
+   "aggregate_tok_s": 3.4,
+   "prefix_hits_before": 0,
+   "prefix_hits_after": 12,
+   "stats_after": {
+    "prefix_cache": {
+     "entries": 2,
+     "active": 0,
+     "nbytes": 327942144,
+     "hits": 12,
+     "misses": 0,
+     "stores": 2,
+     "evictions": 0,
+     "hit_rate": 1.0,
+     "reuse_policy": "always",
+     "recompute_skips": 0,
+     "reuse_autos": 6
+    },
+    "prefix_hit_tokens": 12288,
+    "mlx_peak_mb": 4516.6
+   }
   }
  },
  "notes": [
   "Ollama OpenAI-compatible endpoint did not emit tool calls; quality=0, excluded from quality comparison.",
   "Agent runs are one run per config, high background load.",
-  "Replay uses fixed messages from tune_on recording."
- ]
+  "Replay uses fixed messages from tune_on recording.",
+  "Reliability: abort, eviction, malformed request recovery covered; startup 3.04s + prewarm 7.85s.",
+  "P4 config: cache on, cap16, prefill batch 4 / step 512. Tune 112.9s, holdout 127.5s."
+ ],
+ "reliability": {
+  "startup_s": 3.04,
+  "prewarm_ms": [
+   7848.6
+  ],
+  "checks": {
+   "normal": "length",
+   "abort": {
+    "aborted": true,
+    "request_id": "reliability-abort"
+   },
+   "after_abort": "stop",
+   "eviction": {
+    "entries": 1,
+    "evictions": 3,
+    "active": 0,
+    "nbytes": 304349184
+   },
+   "after_eviction": "stop",
+   "malformed_status": 400,
+   "after_malformed": "stop",
+   "stats": {
+    "running": 0,
+    "waiting": 0,
+    "request_stages": {
+     "added": 5,
+     "first_token": 5,
+     "finished": 5,
+     "aborted": 1,
+     "failed": 0
+    },
+    "prefix_cache": {
+     "hits": 7,
+     "evictions": 4,
+     "entries": 2
+    }
+   }
+  },
+  "prewarm_registered": true,
+  "ok": true
+ }
 }
