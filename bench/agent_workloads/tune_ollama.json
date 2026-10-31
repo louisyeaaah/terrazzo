@@ -32,6 +32,7 @@
     "tool_trace_ok": false,
     "truncated": true,
     "complete_review": false,
+    "pending_tool_calls": false,
     "wall_s": 18.792185208993033,
     "prompt_tokens": 4519,
     "completion_tokens": 192,
@@ -46,6 +47,7 @@
     "tool_trace_ok": false,
     "truncated": true,
     "complete_review": false,
+    "pending_tool_calls": false,
     "wall_s": 12.164584083016962,
     "prompt_tokens": 4524,
     "completion_tokens": 192,
@@ -60,6 +62,7 @@
     "tool_trace_ok": false,
     "truncated": true,
     "complete_review": false,
+    "pending_tool_calls": false,
     "wall_s": 11.302984916954301,
     "prompt_tokens": 4511,
     "completion_tokens": 192,
@@ -150,7 +153,8 @@
    "truncated": true,
    "complete_review": false,
    "final_finish_reason": "length",
-   "followup_finish_reason": "length"
+   "followup_finish_reason": "length",
+   "pending_tool_calls": false
   },
   {
    "task_id": "cache",
@@ -214,7 +218,8 @@
    "truncated": true,
    "complete_review": false,
    "final_finish_reason": "length",
-   "followup_finish_reason": "length"
+   "followup_finish_reason": "length",
+   "pending_tool_calls": false
   },
   {
    "task_id": "mask",
@@ -278,7 +283,8 @@
    "truncated": true,
    "complete_review": false,
    "final_finish_reason": "length",
-   "followup_finish_reason": "length"
+   "followup_finish_reason": "length",
+   "pending_tool_calls": false
   }
  ]
 }

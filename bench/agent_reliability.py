@@ -47,6 +47,26 @@ def chat(base, messages):
     }, timeout=120)
 
 
+def acceptance_report(checks: dict) -> dict:
+    ev = checks.get("eviction", {})
+    st = checks.get("stats", {})
+    pc = st.get("prefix_cache", {})
+    return {
+        "abort_success_and_recovery": (
+            checks.get("abort", {}).get("aborted") is True
+            and checks.get("after_abort") in ("stop", "length")),
+        "malformed_http_400": checks.get("malformed_status") == 400,
+        "malformed_recovery": checks.get("after_malformed") in ("stop", "length"),
+        "eviction_observed_and_recovery": (
+            (ev.get("evictions") or 0) > 0
+            and checks.get("after_eviction") in ("stop", "length")),
+        # Missing active is an unobserved condition, not a pass.
+        "idle_terminal_state": (
+            st.get("running") == 0 and st.get("waiting") == 0
+            and pc.get("active") == 0),
+    }
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="/Users/yezhipeng/project/dsh-other/deepinfer-study/.hf-cache/hub/models--mlx-community--Qwen3-4B-4bit/snapshots/4dcb3d101c2a062e5c1d4bb173588c54ea6c4d25")
@@ -125,23 +145,7 @@ def main():
             "prefix_cache": {k: stats.get("prefix_cache", {}).get(k) for k in
                              ("hits", "evictions", "entries", "active")},
         }
-        checks = result["checks"]
-        ev = checks.get("eviction", {})
-        st = checks.get("stats", {})
-        pc = st.get("prefix_cache", {})
-        result["acceptance"] = {
-            "abort_success_and_recovery": (
-                checks.get("abort", {}).get("aborted") is True
-                and checks.get("after_abort") in ("stop", "length")),
-            "malformed_http_400": checks.get("malformed_status") == 400,
-            "malformed_recovery": checks.get("after_malformed") in ("stop", "length"),
-            "eviction_observed_and_recovery": (
-                (ev.get("evictions") or 0) > 0
-                and checks.get("after_eviction") in ("stop", "length")),
-            "idle_terminal_state": (
-                st.get("running") == 0 and st.get("waiting") == 0
-                and pc.get("active") in (0, None)),
-        }
+        result["acceptance"] = acceptance_report(result["checks"])
         # Input-error handling is not executor failure recovery; leave that
         # acceptance explicitly absent rather than inferring it from HTTP 400.
         result["ok"] = all(result["acceptance"].values())

@@ -105,12 +105,15 @@ def chat(base: str, model: str, messages: list[dict], max_tokens: int,
 
 def _tool_message(call: dict) -> dict:
     fn = call.get("function") or {}
-    try:
-        args = json.loads(fn.get("arguments") or "{}")
-    except Exception:
-        args = {}
-    path = args.get("path") if isinstance(args, dict) else None
-    content = _read_tool(str(path)) if path else "ERROR: missing path"
+    if fn.get("name") != "read_file":
+        content = f"ERROR: unknown tool {fn.get('name')!r}"
+    else:
+        try:
+            args = json.loads(fn.get("arguments") or "{}")
+        except Exception:
+            args = {}
+        path = args.get("path") if isinstance(args, dict) else None
+        content = _read_tool(str(path)) if path else "ERROR: missing path"
     return {"role": "tool", "tool_call_id": call.get("id", ""),
             "name": fn.get("name", "read_file"), "content": content}
 
@@ -121,9 +124,12 @@ def run_task(base: str, model: str, system: str, task: dict, max_tokens: int,
                 {"role": "user", "content": task["prompt"]}]
     requests = []
     final = ""
+    final_r = None
     tools_used = []
+    pending_tool_calls = False
+    tool_rounds_exhausted = False
     t0 = time.perf_counter()
-    for _ in range(max_tool_rounds + 1):
+    for round_idx in range(max_tool_rounds + 1):
         r = chat(base, model, messages, max_tokens)
         requests.append({"messages": json.loads(json.dumps(messages)),
                          "response": {k: r[k] for k in
@@ -136,22 +142,32 @@ def run_task(base: str, model: str, system: str, task: dict, max_tokens: int,
             messages.append(assistant)
             for call in r["tool_calls"]:
                 fn = call.get("function") or {}
+                try:
+                    args = json.loads(fn.get("arguments") or "{}")
+                except Exception:
+                    args = {}
+                path = args.get("path") if isinstance(args, dict) else None
                 tool_msg = _tool_message(call)
                 content = tool_msg.get("content") or ""
                 tools_used.append({"name": fn.get("name"),
+                                   "path": path,
                                    "args": fn.get("arguments"),
                                    "ok": not content.startswith("ERROR:"),
                                    "error": content[:160] if content.startswith("ERROR:") else None})
                 messages.append(tool_msg)
+            if round_idx == max_tool_rounds:
+                pending_tool_calls = True
+                tool_rounds_exhausted = True
             continue
+        final_r = r
         final = r["content"]
         break
-    if not final:
-        final = r["content"] if requests else ""
     # Follow-up turn with the actual answer in history.
     messages.append({"role": "assistant", "content": final})
     messages.append({"role": "user", "content": task["followup"]})
     r2 = chat(base, model, messages, max_tokens)
+    if r2["tool_calls"]:
+        pending_tool_calls = True
     requests.append({"messages": json.loads(json.dumps(messages)),
                      "response": {k: r2[k] for k in
                                   ("finish_reason", "prompt_tokens",
@@ -161,14 +177,25 @@ def run_task(base: str, model: str, system: str, task: dict, max_tokens: int,
     rubric = [[w.lower() for w in group] for group in task["rubric"]]
     keyword_pass = all(any(w in text for w in group) for group in rubric)
     expected_file = task.get("file")
-    expected_read = any(
-        expected_file and expected_file in str(t.get("args") or "")
-        for t in tools_used
-    )
-    tool_trace_ok = expected_read and all(t.get("ok") for t in tools_used)
-    finish_reasons = [r["finish_reason"] for r in (r, r2)]
+    def _same_path(value):
+        if not expected_file or not isinstance(value, str):
+            return False
+        try:
+            return Path(value).as_posix() == Path(expected_file).as_posix()
+        except Exception:
+            return False
+    expected_read = any(t.get("name") == "read_file" and _same_path(t.get("path"))
+                        and t.get("ok") for t in tools_used)
+    tool_trace_ok = (expected_read and bool(tools_used)
+                     and all(t.get("name") == "read_file" and t.get("ok")
+                             for t in tools_used)
+                     and all(_same_path(t.get("path")) for t in tools_used))
+    finish_reasons = [final_r.get("finish_reason") if final_r else None,
+                      r2.get("finish_reason")]
     truncated = any(x == "length" for x in finish_reasons)
-    complete_review = (tool_trace_ok and not truncated
+    complete_review = (tool_trace_ok and not truncated and not pending_tool_calls
+                       and not tool_rounds_exhausted
+                       and finish_reasons == ["stop", "stop"]
                        and bool(final.strip()) and bool(r2["content"].strip()))
     return {
         "task_id": task["id"], "set": task["set"],
@@ -176,8 +203,10 @@ def run_task(base: str, model: str, system: str, task: dict, max_tokens: int,
         "tool_trace_ok": tool_trace_ok,
         "truncated": truncated,
         "complete_review": complete_review,
-        "final_finish_reason": r["finish_reason"],
-        "followup_finish_reason": r2["finish_reason"],
+        "pending_tool_calls": pending_tool_calls,
+        "tool_rounds_exhausted": tool_rounds_exhausted,
+        "final_finish_reason": finish_reasons[0],
+        "followup_finish_reason": finish_reasons[1],
         "wall_s": time.perf_counter() - t0,
         "requests": requests,
         "tools_used": tools_used,
@@ -288,7 +317,9 @@ def main() -> int:
         "tasks": [{k: r[k] for k in
                    ("task_id", "set", "keyword_pass", "tool_trace_ok",
                     "truncated", "complete_review", "wall_s", "prompt_tokens",
-                    "completion_tokens", "finish_reason", "tools_used")
+                    "completion_tokens", "final_finish_reason",
+                    "followup_finish_reason", "pending_tool_calls",
+                    "tool_rounds_exhausted", "tools_used")
                    if k in r} for r in results],
         "keyword_pass_rate": sum(1 for r in results if r["keyword_pass"]) / max(1, len(results)),
         "complete_review_rate": sum(1 for r in results if r["complete_review"]) / max(1, len(results)),

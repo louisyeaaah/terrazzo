@@ -339,16 +339,19 @@
    "malformed_http_400": true,
    "malformed_recovery": true,
    "eviction_observed_and_recovery": true,
-   "idle_terminal_state": true
+   "idle_terminal_state": false,
+   "final_active_observed": null
   },
   "failure_recovery_coverage": "not covered: malformed JSON is input validation, not runner.step/watchdog recovery",
-  "reclassify_note": "post-hoc criterion; final active not recorded, so automatic acceptance remains false without rerun"
+  "reclassify_note": "post-hoc criterion; final active not recorded, so automatic acceptance remains false without rerun",
+  "reliability_note": "stored run did not record final prefix_cache.active; explicit active==0 is required, so this remains unverified"
  },
  "notes": [
   "keyword_pass is rubric word matching, not task success.",
   "all agent runs truncated at 96 tokens; complete_review=0",
   "workload is serial; no admission/batch capacity claim",
   "RSS lower for cap1 but MLX peak same as p4; not unified-memory proof",
-  "Ollama OpenAI endpoint did not emit tool calls"
+  "Ollama OpenAI endpoint did not emit tool calls",
+  "Reliability input-error/abort/eviction observed; final active missing, executor failure recovery not covered."
  ]
 }

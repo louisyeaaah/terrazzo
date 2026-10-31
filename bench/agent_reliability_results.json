@@ -43,8 +43,10 @@
   "malformed_http_400": true,
   "malformed_recovery": true,
   "eviction_observed_and_recovery": true,
-  "idle_terminal_state": true
+  "idle_terminal_state": false,
+  "final_active_observed": null
  },
  "failure_recovery_coverage": "not covered: malformed JSON is input validation, not runner.step/watchdog recovery",
- "reclassify_note": "post-hoc criterion; final active not recorded, so automatic acceptance remains false without rerun"
+ "reclassify_note": "post-hoc criterion; final active not recorded, so automatic acceptance remains false without rerun",
+ "reliability_note": "stored run did not record final prefix_cache.active; explicit active==0 is required, so this remains unverified"
 }

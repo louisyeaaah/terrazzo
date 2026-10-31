@@ -25,16 +25,29 @@ def classify(task_rec, task_def):
                 if content.startswith("ERROR:"):
                     tool_ok = False
         for t in task_rec.get("tools_used", []):
-            if expected and expected in str(t.get("args") or ""):
+            args = str(t.get("args") or "")
+            try:
+                parsed = json.loads(args) if args else {}
+            except Exception:
+                parsed = {}
+            path = parsed.get("path") if isinstance(parsed, dict) else None
+            if (t.get("name") == "read_file" and expected
+                    and isinstance(path, str)
+                    and Path(path).as_posix() == Path(expected).as_posix()):
                 expected_read = True
-    tool_trace_ok = bool(expected_read and tool_ok)
+    tool_trace_ok = bool(expected_read and tool_ok
+                         and all(t.get("name") == "read_file" for t in
+                                 task_rec.get("tools_used", [])))
     finish_reasons = [final_req.get("finish_reason"), follow_req.get("finish_reason")]
+    pending = any(x == "tool_calls" for x in finish_reasons)
     truncated = any(x == "length" for x in finish_reasons)
-    complete_review = (tool_trace_ok and not truncated
+    complete_review = (tool_trace_ok and not truncated and not pending
+                       and finish_reasons == ["stop", "stop"]
                        and bool((task_rec.get("final") or "").strip())
                        and bool((task_rec.get("followup") or "").strip()))
     return {"keyword_pass": keyword_pass, "tool_trace_ok": tool_trace_ok,
             "truncated": truncated, "complete_review": complete_review,
+            "pending_tool_calls": pending,
             "final_finish_reason": finish_reasons[0],
             "followup_finish_reason": finish_reasons[1]}
 
@@ -56,7 +69,7 @@ def main():
         summary.pop("success_rate", None)
         summary["tasks"] = [{k: t.get(k) for k in
                              ("task_id", "set", "keyword_pass", "tool_trace_ok",
-                              "truncated", "complete_review", "wall_s",
+                              "truncated", "complete_review", "pending_tool_calls", "wall_s",
                               "prompt_tokens", "completion_tokens",
                               "final_finish_reason", "followup_finish_reason",
                               "tools_used") if k in t} for t in tasks]

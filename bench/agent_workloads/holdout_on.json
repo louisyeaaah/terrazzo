@@ -400,6 +400,7 @@
     "tool_trace_ok": true,
     "truncated": true,
     "complete_review": false,
+    "pending_tool_calls": false,
     "wall_s": 50.73665645800065,
     "prompt_tokens": 12150,
     "completion_tokens": 217,
@@ -419,6 +420,7 @@
     "tool_trace_ok": true,
     "truncated": true,
     "complete_review": false,
+    "pending_tool_calls": false,
     "wall_s": 116.52870949998032,
     "prompt_tokens": 20316,
     "completion_tokens": 216,
@@ -589,7 +591,8 @@
    "truncated": true,
    "complete_review": false,
    "final_finish_reason": "length",
-   "followup_finish_reason": "length"
+   "followup_finish_reason": "length",
+   "pending_tool_calls": false
   },
   {
    "task_id": "request",
@@ -717,7 +720,8 @@
    "truncated": true,
    "complete_review": false,
    "final_finish_reason": "length",
-   "followup_finish_reason": "length"
+   "followup_finish_reason": "length",
+   "pending_tool_calls": false
   }
  ]
 }
