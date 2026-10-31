@@ -77,13 +77,14 @@ vLLM 单会话取第二次（稳态）运行；首次运行包含 kernel 热身�
   `--profile agent` / `--profile mixed`。这是产品路径。
 - **实验性原生快照：**Qwen3.5 / Gemma 4 现在可以 prewarm 并恢复原生 full-prefix cache
   状态（ArraysCache / RotatingKVCache）。修掉 block 边界、full-hit 回退和 BatchKVCache
-  mask 标志问题后，单请求 cached vs no-cache 已逐字一致且实际复用 2432/2592 tokens；
-  并发 B 分支仍有差异，暂不作为生产预设。
+  mask 标志问题后，单请求 cached vs no-cache 已逐字一致且实际复用 2432/2592 tokens。
+  剩余 B 输出差异已用精确 prefill 分块复现，不是快照恢复问题；但仍属实验路径，
+  暂不作为生产预设。
 - 不做“哪个模型综合最快”的结论。生成行为诊断、基准 caveat 和失效记录都在
   [BENCHMARKS §54–64](BENCHMARKS.md)；性能对照不再作为首页主张。
-- **缓存正确性是有边界的，不是逐 bit：**命中长度、实际复用、分支隔离和单请求 A 已验证；
-  B 类近 tie token 在 cached/no-cache 之间仍可能因 chunked bf16 prefill 改变 logits 而不同。
-  见 [BENCHMARKS §65](BENCHMARKS.md)。不把缓存加速说成输出逐字等价。
+- **缓存正确性是有范围边界的，不是逐 bit：**命中长度、实际复用、分支隔离、保存/恢复的
+  state/meta/logits，以及精确分块复刻都已验证。cached vs no-cache 的输出差异来自两者
+  prefill 分块不同，是数值边界，不是快照损坏。见 [BENCHMARKS §65](BENCHMARKS.md)。
 - Decode-only 不含排队、prefill、首 token 等待，不能读成端到端速度。
 
 ### 长系统提示：预注册是差异点

@@ -2454,11 +2454,33 @@ probe 脚本：`bench/first_divergence_probe.py`。最大绝对 logits 差不是
 `16+1` 与 no-cache 的 `512…400+1` 是不同数值路径；不是 snapshot 恢复，也没有观察到
 BatchGenerator merge/布局错误。此前“service B 未解释”的表述随之更新。
 
-仍开放的是 Qwen3-4B 标准 cache 的多轮 A（12 vs 13 tokens）；它不在这个单轮 B probe
-的覆盖范围内。
+Qwen3-4B 多轮 A 也已用同一方法复现，见 §65.0。
 
 数据：`bench/cache_equivalence_results.json`、`bench/native_cache_results.json`、
 `bench/snapshot_restore_results.json`、`bench/batcher_chunk_results.json`。
+
+### 65.0 Qwen3-4B 多轮 A 复现
+
+同一条 turn-2 请求：system + turn1 user/assistant + “请再补充一句”，Qwen3-4B。
+prompt 2598 tokens，cache 前缀 2432，suffix 166：
+
+| 路径 | 分块 | 输出 |
+|---|---|---|
+| cache | `165 + 1` | “规范一确保所有回答具有可追溯性和准确性。” |
+| no-cache | `512×5 + ...` | “规范一确保所有回答都具有可追溯性和准确性。” |
+
+首次分叉在生成第 5 个 token（输入“回答”）：
+
+- cache top1 “具有”，logits 30.25/30.125，margin 0.125；
+- no-cache top1 “都”，logits 30.125/30.0，margin 0.125。
+
+manual direct calls 精确复刻两组 chunk 后，分别与 BatchGenerator cache/no-cache 输出逐 token
+一致；因此这条例子的 12 vs 13 tokens 差异同样是 **prefill 分块边界**，不是快照恢复或
+batcher merge 错误。
+
+`batcher_chunk_probe.py` 同时修正了两个诊断问题：长 suffix 先按 512 切块再追加最后
+单 token（suffix 只有 1 token 时不产生空块）；manual 日志现在记录每次模型调用后的
+输出 logits，输入 token 与输出分布分开保存。`_first_diff()` 也会报告纯长度差异。
 
 ### 65.1 Batch 候选与 admission cap 复测
 

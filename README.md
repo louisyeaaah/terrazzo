@@ -83,16 +83,16 @@ steady state as well.
 - **Experimental native snapshot:** Qwen3.5 / Gemma 4 can prewarm and restore native
   full-prefix cache state (ArraysCache / RotatingKVCache). After fixing block-boundary,
   full-hit rollback and the BatchKVCache mask-flag bug, single-request cache/no-cache is
-  exact and actually reuses the prefix (2432/2592 tokens); concurrent branch B still differs,
-  so this is not a production preset yet.
+  exact and actually reuses the prefix (2432/2592 tokens). Remaining B-output differences
+  were reproduced by exact prefill chunk boundaries, not snapshot restore; this is still
+  experimental, not a production preset.
 - No "which model is fastest overall" claim. Generation-behavior diagnostics, benchmark
   caveats and invalidated results live in
   [BENCHMARKS §54–64](BENCHMARKS.md); performance comparisons are no longer a homepage claim.
-- **Cache correctness is bounded, not bitwise:** hit length, actual reuse, branch isolation
-  and single-request A outputs are verified; a near-tie B token can still differ between
-  cached and no-cache paths because chunked bf16 prefill changes logits. See
-  [BENCHMARKS §65](BENCHMARKS.md). Cache speedups are not claimed as exact-output
-  equivalence.
+- **Cache correctness is scoped, not bitwise:** hit length, actual reuse, branch isolation,
+  stored/restored state/meta/logits, and exact-chunk reproductions are verified. Cached vs
+  no-cache output can differ because their prefill chunks differ; this is a numerical
+  boundary, not evidence of snapshot corruption. See [BENCHMARKS §65](BENCHMARKS.md).
 - Decode-only numbers exclude queueing, prefill and first-token wait; do not read them as
   end-to-end speed.
 

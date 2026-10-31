@@ -9,7 +9,25 @@
  "observations": {
   "qwen3_4b_multiturn_A": {
    "turn1": "exact (11 tokens)",
-   "turn2": "cached 12 vs no-cache 13 tokens; stable, same 2598 input tokens"
+   "turn2": "cached \"具有\" vs no-cache \"都\"; first diff at generated token 5; prompt 2598, split 2432, suffix 166",
+   "exact_chunks": "cache [165,1] and no-cache [512x5+...] both reproduce BatchGenerator; manual==batcher for both paths",
+   "first_diff_input": "回答",
+   "cache_top1": "具有",
+   "nocache_top1": "都",
+   "logits": {
+    "cache": [
+     30.25,
+     30.125
+    ],
+    "nocache": [
+     30.125,
+     30.0
+    ],
+    "margins": [
+     0.125,
+     0.125
+    ]
+   }
   },
   "qwen3_5_native": {
    "A": "exact",
@@ -25,7 +43,7 @@
    "qwen3.5-0.8b": "concurrent B differs from serial no-cache; batching alone changes output"
   }
  },
- "conclusion": "for the tested B prompt: snapshot state/meta/logits are exact, and exact-chunk manual calls reproduce both BatchGenerator paths. The cache/no-cache output difference is a prefill chunking effect; Qwen3-4B multi-turn A remains a separate open case.",
+ "conclusion": "for the tested single-turn B and Qwen3-4B multi-turn A cases, snapshot state/meta/logits are exact and manual exact-chunk calls reproduce both BatchGenerator paths; remaining output differences are explained by prefill chunk boundaries. This is not a general proof for all inputs.",
  "first_divergence_probe": "bench/first_divergence_probe.py",
  "first_divergence_results": "bench/first_divergence_results.json",
  "first_divergence": {
@@ -66,5 +84,7 @@
   "qwen3-4b": "manual cache/no-cache both match batcher",
   "gemma4-e2b": "manual cache/no-cache both match batcher",
   "conclusion": "service B difference is explained by prefill chunk boundaries (cache suffix 16+1 vs no-cache 512...400+1), not snapshot restore or observed batcher merge error"
- }
+ },
+ "multi_turn_probe": "bench/multi_turn_cache_probe.py",
+ "multi_turn_results": "bench/multi_turn_cache_results.json"
 }

@@ -1,0 +1,94 @@
+{
+ "model": "/Users/yezhipeng/project/dsh-other/deepinfer-study/.hf-cache/hub/models--mlx-community--Qwen3-4B-4bit/snapshots/4dcb3d101c2a062e5c1d4bb173588c54ea6c4d25",
+ "prompt_tokens": 2598,
+ "split": 2432,
+ "suffix_tokens": 166,
+ "cache_chunks": [
+  165,
+  1
+ ],
+ "cache_ids": [
+  101931,
+  14777,
+  103944,
+  55338,
+  102104,
+  100629,
+  30440,
+  109234,
+  105178,
+  111076,
+  1773
+ ],
+ "nocache_ids": [
+  101931,
+  14777,
+  103944,
+  55338,
+  102104,
+  71268,
+  100629,
+  30440,
+  109234,
+  105178,
+  111076,
+  1773
+ ],
+ "batch_cache_ids": [
+  101931,
+  14777,
+  103944,
+  55338,
+  102104,
+  100629,
+  30440,
+  109234,
+  105178,
+  111076,
+  1773
+ ],
+ "batch_nocache_ids": [
+  101931,
+  14777,
+  103944,
+  55338,
+  102104,
+  71268,
+  100629,
+  30440,
+  109234,
+  105178,
+  111076,
+  1773
+ ],
+ "cache_vs_nocache_first_diff": 5,
+ "manual_cache_matches_batch": true,
+ "manual_nocache_matches_batch": true,
+ "first_diff_cache_logits": {
+  "input_token_ids": [
+   102104
+  ],
+  "output_top1": 100629,
+  "output_logits": [
+   30.25,
+   30.125
+  ],
+  "output_margin": 0.125
+ },
+ "first_diff_nocache_logits": {
+  "input_token_ids": [
+   102104
+  ],
+  "output_top1": 71268,
+  "output_logits": [
+   30.125,
+   30.0
+  ],
+  "output_margin": 0.125
+ },
+ "first_diff_input_text": "回答",
+ "first_diff_cache_text": "具有",
+ "first_diff_nocache_text": "都",
+ "cache_text": "规范一确保所有回答具有可追溯性和准确性。",
+ "nocache_text": "规范一确保所有回答都具有可追溯性和准确性。"
+}

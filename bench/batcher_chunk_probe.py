@@ -64,24 +64,33 @@ class Recorder:
 def _manual_generate(model, cache, chunks, eos, max_new):
     calls = []
     last = None
+    last_input = None
     for chunk in chunks:
+        last_input = list(chunk)
         out = model(mx.array([chunk]), cache=cache)
         mx.eval(out)
         last = out[0, -1, :]
         tok, margin, idx, vals = _choice(last)
-        calls.append({"chunk_len": len(chunk), "top1": tok, "margin": margin,
-                      "top2": idx, "logits": vals})
+        calls.append({"input_token_ids": last_input,
+                      "input_len": len(chunk),
+                      "output_top1": tok, "output_margin": margin,
+                      "output_top2": idx, "output_logits": vals})
     generated = []
     for _ in range(max_new):
         tok, margin, idx, vals = _choice(last)
+        # Log the distribution produced by the previous input, including EOS.
+        calls.append({"input_token_ids": last_input,
+                      "input_len": len(last_input) if last_input else 0,
+                      "output_top1": tok, "output_margin": margin,
+                      "output_top2": idx, "output_logits": vals,
+                      "terminal": tok in eos})
         if tok in eos:
             break
         generated.append(tok)
+        last_input = [tok]
         out = model(mx.array([[tok]]), cache=cache)
         mx.eval(out)
         last = out[0, -1, :]
-        calls.append({"chunk_len": 1, "top1": tok, "margin": margin,
-                      "top2": idx, "logits": vals, "generated": True})
     return generated, calls
 
 
@@ -119,7 +128,7 @@ def _first_diff(a, b):
     for i, (x, y) in enumerate(zip(a, b)):
         if x != y:
             return i
-    return None
+    return min(len(a), len(b)) if len(a) != len(b) else None
 
 
 def run(model_path, split, system_tokens, question, max_new):
@@ -147,7 +156,13 @@ def run(model_path, split, system_tokens, question, max_new):
 
     # Batcher chunks the suffix as [all but last] + [last]; no-cache chunks the
     # whole prompt at prefill_step_size=512, also ending with one token.
-    manual_cache_chunks = [suffix[:-1], suffix[-1:]]
+    def _chunk_suffix(seq, step=512):
+        body = seq[:-1]
+        chunks = [body[i:i + step] for i in range(0, len(body), step)] if body else []
+        chunks.append(seq[-1:])
+        return chunks
+
+    manual_cache_chunks = _chunk_suffix(suffix)
     manual_cache, cache_calls = _manual_generate(model, restored, manual_cache_chunks,
                                                  eos, max_new)
     prompt_body = ids[:-1]
