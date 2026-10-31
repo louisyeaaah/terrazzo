@@ -38,8 +38,9 @@ Expected:
 | Completeness | pass | First stop, follow-up stop, no pending tool calls, no truncation |
 | Wording | minor issue | Says block “stays in free_blocks”; actually it is removed on acquire and never returned |
 
-**Human sign-off: pending.** The JSON keeps `accepted=false` and
-`human_signoff="pending_user_confirmation"` until the user confirms.
+**Human sign-off: confirmed (2026-10-31).** The user confirmed defect, trigger
+and fix are all correct; `accepted=true`. The minor wording issue does not change
+the diagnosis or fix, and is retained in the record.
 
 ## Preserved failure/truncation records
 
@@ -49,6 +50,5 @@ This golden run is the only non-truncated complete review so far.
 
 ## Next
 
-- If the user accepts the checklist, mark this task accepted and then expand the
-  known-defect task set.
+- Expand the known-defect task set only after this single-task acceptance.
 - Do not add performance configs or rerun the comparison matrix yet.

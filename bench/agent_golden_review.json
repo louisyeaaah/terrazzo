@@ -1079,11 +1079,17 @@
   "minimal_fix_identified": true,
   "notes": "Agent correctly identified the ==1 condition, the zero-reference trigger, and ==0 + free_blocks fix. Minor wording error: it said the block \"remains in free_blocks\"; actually acquire removes it and release never returns it. Core diagnosis/fix are correct."
  },
- "human_signoff": "pending_user_confirmation",
- "accepted": false,
+ "human_signoff": "confirmed",
+ "accepted": true,
  "truncation": {
   "truncated": false,
   "final_finish_reason": "stop",
   "followup_finish_reason": "stop"
- }
+ },
+ "human_signoff_scope": {
+  "defect_correct": true,
+  "trigger_correct": true,
+  "fix_correct": true
+ },
+ "human_signoff_date": "2026-10-31"
 }

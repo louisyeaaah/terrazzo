@@ -366,7 +366,7 @@
  ],
  "golden_review": {
   "fixture": "bench/agent_fixtures/refcount_leak.py",
-  "human_signoff": "pending_user_confirmation",
-  "accepted": false
+  "human_signoff": "confirmed",
+  "accepted": true
  }
 }
