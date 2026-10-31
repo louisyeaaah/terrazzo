@@ -66,10 +66,11 @@ def main():
         [Engine.__new__(Engine)._seed_caches(stored, split)])
     batch_nocache_ids, batch_nocache_calls = _batcher(
         model, eos, args.max_new_tokens, [[ids]], [[]], None)
-    diff = _first_diff(cache_ids, nocache_ids)
-
     prompt_cache_n = len(chunks(suffix))
     prompt_nocache_n = len(chunks(ids))
+    diff = _first_diff(cache_ids, nocache_ids)
+    cache_stopped = any(c.get("terminal") for c in cache_calls[prompt_cache_n:])
+    nocache_stopped = any(c.get("terminal") for c in nocache_calls[prompt_nocache_n:])
 
     def gen_logits(calls, prompt_n, i):
         idx = prompt_n + i
@@ -86,7 +87,15 @@ def main():
         "suffix_tokens": len(suffix), "cache_chunks": [len(c) for c in chunks(suffix)],
         "cache_ids": cache_ids, "nocache_ids": nocache_ids,
         "batch_cache_ids": batch_cache_ids, "batch_nocache_ids": batch_nocache_ids,
-        "cache_vs_nocache_first_diff": diff,
+        "cache_vs_nocache_first_diff_zero_based": diff,
+        "cache_vs_nocache_first_diff_ordinal": (diff + 1 if diff is not None else None),
+        "cache_stopped_on_eos": cache_stopped,
+        "nocache_stopped_on_eos": nocache_stopped,
+        "cache_tokens_excluding_eos": len(cache_ids),
+        "nocache_tokens_excluding_eos": len(nocache_ids),
+        "cache_tokens_including_eos": len(cache_ids) + (1 if cache_stopped else 0),
+        "nocache_tokens_including_eos": len(nocache_ids) + (1 if nocache_stopped else 0),
+        "request_provenance": "constructed from fixed turn-1 assistant text; full HTTP history token IDs were not archived",
         "manual_cache_matches_batch": cache_ids == batch_cache_ids,
         "manual_nocache_matches_batch": nocache_ids == batch_nocache_ids,
         "first_diff_cache_logits": (gen_logits(cache_calls, prompt_cache_n, diff)
@@ -105,7 +114,10 @@ def main():
     Path(args.out).write_text(json.dumps(out, indent=1, ensure_ascii=False))
     print(json.dumps({k: out[k] for k in
                       ("prompt_tokens", "split", "suffix_tokens", "cache_chunks",
-                       "cache_vs_nocache_first_diff", "manual_cache_matches_batch",
+                       "cache_vs_nocache_first_diff_zero_based",
+                       "cache_vs_nocache_first_diff_ordinal",
+                       "cache_tokens_including_eos", "nocache_tokens_including_eos",
+                       "manual_cache_matches_batch",
                        "manual_nocache_matches_batch", "cache_text", "nocache_text")},
                      indent=1, ensure_ascii=False))
     print("wrote", args.out)

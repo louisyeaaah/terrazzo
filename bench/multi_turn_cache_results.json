@@ -61,7 +61,15 @@
   111076,
   1773
  ],
- "cache_vs_nocache_first_diff": 5,
+ "cache_vs_nocache_first_diff_zero_based": 5,
+ "cache_vs_nocache_first_diff_ordinal": 6,
+ "cache_stopped_on_eos": true,
+ "nocache_stopped_on_eos": true,
+ "cache_tokens_excluding_eos": 11,
+ "nocache_tokens_excluding_eos": 12,
+ "cache_tokens_including_eos": 12,
+ "nocache_tokens_including_eos": 13,
+ "request_provenance": "constructed from fixed turn-1 assistant text; full HTTP history token IDs were not archived",
  "manual_cache_matches_batch": true,
  "manual_nocache_matches_batch": true,
  "first_diff_cache_logits": {

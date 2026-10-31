@@ -95,6 +95,10 @@ steady state as well.
   boundary, not evidence of snapshot corruption. See [BENCHMARKS §65](BENCHMARKS.md).
 - Decode-only numbers exclude queueing, prefill and first-token wait; do not read them as
   end-to-end speed.
+- Agent-workflow acceptance (local code review, Qwen3-4B): cache-on beats cache-off, but
+  native mlx-lm was faster in this scenario. See
+  [bench/AGENT_WORKFLOW_REPORT.md](bench/AGENT_WORKFLOW_REPORT.md); no blanket
+  "faster than X" claim.
 
 ### Long system prompts: pre-registration is the differentiator
 

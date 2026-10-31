@@ -9,7 +9,7 @@
  "observations": {
   "qwen3_4b_multiturn_A": {
    "turn1": "exact (11 tokens)",
-   "turn2": "cached \"具有\" vs no-cache \"都\"; first diff at generated token 5; prompt 2598, split 2432, suffix 166",
+   "turn2": "cached \"具有\" vs no-cache \"都\"; zero-based output index 5 (6th token, ordinal 6); non-EOS 11/12, including EOS 12/13",
    "exact_chunks": "cache [165,1] and no-cache [512x5+...] both reproduce BatchGenerator; manual==batcher for both paths",
    "first_diff_input": "回答",
    "cache_top1": "具有",
@@ -27,7 +27,32 @@
      0.125,
      0.125
     ]
-   }
+   },
+   "first_diff": {
+    "zero_based": 5,
+    "ordinal": 6,
+    "cache_top1": "具有",
+    "nocache_top1": "都",
+    "cache_logits": [
+     30.25,
+     30.125
+    ],
+    "nocache_logits": [
+     30.125,
+     30.0
+    ]
+   },
+   "token_counts": {
+    "non_eos": [
+     11,
+     12
+    ],
+    "including_eos": [
+     12,
+     13
+    ]
+   },
+   "request_provenance": "constructed from fixed turn-1 assistant text; original HTTP history token IDs were not archived"
   },
   "qwen3_5_native": {
    "A": "exact",

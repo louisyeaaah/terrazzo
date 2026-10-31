@@ -86,6 +86,9 @@ vLLM 单会话取第二次（稳态）运行；首次运行包含 kernel 热身�
   state/meta/logits，以及精确分块复刻都已验证。cached vs no-cache 的输出差异来自两者
   prefill 分块不同，是数值边界，不是快照损坏。见 [BENCHMARKS §65](BENCHMARKS.md)。
 - Decode-only 不含排队、prefill、首 token 等待，不能读成端到端速度。
+- 本地代码审查 agent 验收（Qwen3-4B）：缓存开启明显快于关闭，但该场景下原生 mlx-lm
+  更快。见 [bench/AGENT_WORKFLOW_REPORT.md](bench/AGENT_WORKFLOW_REPORT.md)；不做泛化的
+  “比 X 快”结论。
 
 ### 长系统提示：预注册是差异点
 

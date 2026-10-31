@@ -2469,10 +2469,15 @@ prompt 2598 tokens，cache 前缀 2432，suffix 166：
 | cache | `165 + 1` | “规范一确保所有回答具有可追溯性和准确性。” |
 | no-cache | `512×5 + ...` | “规范一确保所有回答都具有可追溯性和准确性。” |
 
-首次分叉在生成第 5 个 token（输入“回答”）：
+首次分叉在 **zero-based index 5（第 6 个生成 token）**（输入“回答”）：
 
 - cache top1 “具有”，logits 30.25/30.125，margin 0.125；
 - no-cache top1 “都”，logits 30.125/30.0，margin 0.125。
+
+计数口径：probe 的生成列表不含 EOS 时为 **11 / 12**；计入 EOS 后为 **12 / 13**，
+与旧服务记录一致。服务旧记录没有保存完整 HTTP 消息 token IDs，因此本 probe 复现的是
+相同文本差异，不能独立证明与原 HTTP 请求逐 token 相同；turn-1 assistant 文本是固定的
+构造历史。
 
 manual direct calls 精确复刻两组 chunk 后，分别与 BatchGenerator cache/no-cache 输出逐 token
 一致；因此这条例子的 12 vs 13 tokens 差异同样是 **prefill 分块边界**，不是快照恢复或
