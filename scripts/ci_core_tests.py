@@ -27,6 +27,7 @@ PURE_MODULES = [
     "tests.test_modelfile",
     "tests.test_tools",
     "tests.test_agent_bench",
+    "tests.test_agent_workflow",
     "tests.test_json_schema",
     "tests.test_ngram_spec",
     "tests.test_slo",

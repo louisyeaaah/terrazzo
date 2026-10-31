@@ -153,10 +153,15 @@
    {
     "task_id": "refcount",
     "set": "tune",
-    "success": true,
+    "keyword_pass": true,
+    "tool_trace_ok": true,
+    "truncated": true,
+    "complete_review": false,
     "wall_s": 20.703679083031602,
     "prompt_tokens": 10413,
     "completion_tokens": 217,
+    "final_finish_reason": "length",
+    "followup_finish_reason": "length",
     "tools_used": [
      {
       "name": "read_file",
@@ -167,10 +172,15 @@
    {
     "task_id": "cache",
     "set": "tune",
-    "success": true,
+    "keyword_pass": true,
+    "tool_trace_ok": true,
+    "truncated": true,
+    "complete_review": false,
     "wall_s": 73.33539420797024,
     "prompt_tokens": 19817,
     "completion_tokens": 216,
+    "final_finish_reason": "length",
+    "followup_finish_reason": "length",
     "tools_used": [
      {
       "name": "read_file",
@@ -181,10 +191,15 @@
    {
     "task_id": "mask",
     "set": "tune",
-    "success": true,
+    "keyword_pass": true,
+    "tool_trace_ok": true,
+    "truncated": true,
+    "complete_review": false,
     "wall_s": 18.887453916016966,
     "prompt_tokens": 8887,
     "completion_tokens": 218,
+    "final_finish_reason": "length",
+    "followup_finish_reason": "length",
     "tools_used": [
      {
       "name": "read_file",
@@ -193,7 +208,6 @@
     ]
    }
   ],
-  "success_rate": 1.0,
   "peak_rss_mb": 2470.0,
   "stats_after": {
    "prefix_cache": {
@@ -215,13 +229,20 @@
   "prefix_hits_before": 0,
   "prefix_hits_after": 18,
   "output_tokens": 651,
-  "aggregate_tok_s": 5.8
+  "aggregate_tok_s": 5.8,
+  "keyword_pass_rate": 1.0,
+  "complete_review_rate": 0.0,
+  "truncated_tasks": [
+   "refcount",
+   "cache",
+   "mask"
+  ],
+  "tool_trace_failures": []
  },
  "tasks": [
   {
    "task_id": "refcount",
    "set": "tune",
-   "success": true,
    "wall_s": 20.703679083031602,
    "requests": [
     {
@@ -339,12 +360,17 @@
    "final": "## 代码审查结论\n\n在 `terrazzo/blocks.py` 中，`BlockManager` 类的 `free` 方法中存在一个可能导致块泄漏或重复释放的具体风险。该风险出现在 `free` 方法中，当 `blk.ref_count` 为 0 时，会将 `blk.block_hash` 从 `self.hash_to_block` 中删除。然而，如果 `blk.block_hash` 未被正确设置或未被正确",
    "followup": "## 代码审查结论\n\n在 `terrazzo/blocks.py` 中，`BlockManager` 类的 `free` 方法中存在一个可能导致块泄漏或重复释放的具体风险。该风险出现在 `free` 方法中，当 `blk.ref_count` 为 0 时，会将 `blk.block_hash` 从 `self.hash_to_block` 中删除。然而，如果 `blk.block_hash` 未被正确设置或未被正确",
    "prompt_tokens": 10413,
-   "completion_tokens": 217
+   "completion_tokens": 217,
+   "keyword_pass": true,
+   "tool_trace_ok": true,
+   "truncated": true,
+   "complete_review": false,
+   "final_finish_reason": "length",
+   "followup_finish_reason": "length"
   },
   {
    "task_id": "cache",
    "set": "tune",
-   "success": true,
    "wall_s": 73.33539420797024,
    "requests": [
     {
@@ -462,12 +488,17 @@
    "final": "## 结论\n\n在 `terrazzo/engine.py` 的 `Engine` 类中，`_insert_new` 方法中存在一个可能导致缓存统计或输出不一致的具体风险：**在缓存命中时，没有正确更新缓存统计信息**。\n\n### 风险详情\n\n在 `_insert_new` 方法中，当请求的提示词与缓存中的提示词匹配时，会调用 `self.prefix_cache.lookup(seq.prompt_token_ids",
    "followup": "## 结论\n\n如果 runner 最终没有复用 cache，`num_hits` 和 `prefix_hit_tokens` 应该**不增加**，因为缓存命中统计仅在实际复用 cache 时才应被记录。\n\n### 风险详情\n\n在 `terrazzo/engine.py` 的 `_insert_new` 方法中，当 `lookup_happened` 为 `True` 时，才会更新 `self._step_used_prefix_cache",
    "prompt_tokens": 19817,
-   "completion_tokens": 216
+   "completion_tokens": 216,
+   "keyword_pass": true,
+   "tool_trace_ok": true,
+   "truncated": true,
+   "complete_review": false,
+   "final_finish_reason": "length",
+   "followup_finish_reason": "length"
   },
   {
    "task_id": "mask",
    "set": "tune",
-   "success": true,
    "wall_s": 18.887453916016966,
    "requests": [
     {
@@ -585,7 +616,13 @@
    "final": "## 结论\n\n在 `terrazzo/mask_patch.py` 中，`BatchKVCache` 的 `make_mask` 方法被修改以在解码时跳过因果掩码。这个修改依赖于 `BatchKVCache` 的 `prepare` 和 `finalize` 方法，以及 `extend` 和 `filter` 方法。如果 `BatchKVCache` 的 batch layout 发生变化，这些方法可能无法正确更新 `cache._dsh_has_padding`",
    "followup": "## 结论\n\n在 `terrazzo/mask_patch.py` 中，`extend` 和 `filter` 方法被修改以在改变 batch layout 时重新计算 `cache._dsh_has_padding`。当 `BatchKVCache` 的 batch layout 发生变化时，`_dsh_has_padding` 可能无法正确反映当前 batch 是否有左填充。\n\n## 最值得修复的建议\n\n在 `extend` 和 `filter` 方法中，",
    "prompt_tokens": 8887,
-   "completion_tokens": 218
+   "completion_tokens": 218,
+   "keyword_pass": true,
+   "tool_trace_ok": true,
+   "truncated": true,
+   "complete_review": false,
+   "final_finish_reason": "length",
+   "followup_finish_reason": "length"
   }
  ]
 }

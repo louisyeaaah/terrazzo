@@ -123,12 +123,28 @@ def main():
             "running": stats.get("running"), "waiting": stats.get("waiting"),
             "request_stages": stats.get("request_stages"),
             "prefix_cache": {k: stats.get("prefix_cache", {}).get(k) for k in
-                             ("hits", "evictions", "entries")},
+                             ("hits", "evictions", "entries", "active")},
         }
-        result["ok"] = (result["checks"].get("abort", {}).get("aborted") is True
-                        or result["checks"].get("abort", {}).get("aborted") == 1) \
-            and result["checks"].get("after_abort") in ("stop", "length") \
-            and result["checks"].get("after_malformed") in ("stop", "length")
+        checks = result["checks"]
+        ev = checks.get("eviction", {})
+        st = checks.get("stats", {})
+        pc = st.get("prefix_cache", {})
+        result["acceptance"] = {
+            "abort_success_and_recovery": (
+                checks.get("abort", {}).get("aborted") is True
+                and checks.get("after_abort") in ("stop", "length")),
+            "malformed_http_400": checks.get("malformed_status") == 400,
+            "malformed_recovery": checks.get("after_malformed") in ("stop", "length"),
+            "eviction_observed_and_recovery": (
+                (ev.get("evictions") or 0) > 0
+                and checks.get("after_eviction") in ("stop", "length")),
+            "idle_terminal_state": (
+                st.get("running") == 0 and st.get("waiting") == 0
+                and pc.get("active") in (0, None)),
+        }
+        # Input-error handling is not executor failure recovery; leave that
+        # acceptance explicitly absent rather than inferring it from HTTP 400.
+        result["ok"] = all(result["acceptance"].values())
     finally:
         proc.terminate()
         try:

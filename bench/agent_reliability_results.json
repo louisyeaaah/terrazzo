@@ -37,5 +37,14 @@
   }
  },
  "prewarm_registered": true,
- "ok": true
+ "ok": false,
+ "acceptance": {
+  "abort_success_and_recovery": true,
+  "malformed_http_400": true,
+  "malformed_recovery": true,
+  "eviction_observed_and_recovery": true,
+  "idle_terminal_state": true
+ },
+ "failure_recovery_coverage": "not covered: malformed JSON is input validation, not runner.step/watchdog recovery",
+ "reclassify_note": "post-hoc criterion; final active not recorded, so automatic acceptance remains false without rerun"
 }

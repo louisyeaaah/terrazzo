@@ -1,7 +1,8 @@
 # Agent workflow acceptance protocol (pre-registered)
 
-Status: first run completed; reliability and eviction covered; repeated idle runs
-and Ollama native tool calling remain open.
+Status: first serial, 96-token-capped evaluation completed. Quality/complete-review,
+concurrent workload and executor-failure recovery are **not accepted**. Repeated
+idle runs and Ollama native tool calling remain open.
 
 ## User and scenario
 
@@ -36,8 +37,9 @@ reported separately from task timing.
 
 ## Metrics and thresholds
 
-Primary: task completion wall time, task success rate, peak memory (RSS and
-`/stats.mlx_peak_mb` where available). Secondary: per-request latency, tokens.
+Primary: limited-length task wall time, `complete_review` rate, peak memory (RSS
+and `/stats.mlx_peak_mb` where available). Secondary: per-request latency, tokens.
+`keyword_pass` is only a rubric word check and must not be called task success.
 
 A qualifying switch reason requires, on holdout tasks:
 
@@ -53,8 +55,12 @@ scenario" and stop expanding performance features.
 
 - multi-turn agent execution: yes (tasks above).
 - fixed replay: yes.
-- cancellation: covered (`agent_reliability.py`; abort + recovery).
-- cache eviction: covered (4 distinct prewarms under 400 MB; evictions observed).
-- failure recovery: covered (malformed request 400 + next request succeeds).
+- cancellation: observed (abort+recovery); automatic acceptance still needs final
+  active/running/waiting assertions.
+- cache eviction: observed (4 distinct prewarms under 400 MB; evictions observed).
+- failure recovery: **not covered**: malformed JSON is input validation, not a
+  `runner.step()`/watchdog executor failure.
 - cold start vs steady-state: Terrazzo startup 3.04 s + prewarm 7.85 s; task timings
   are steady-state. Native baseline cold start not measured.
+- concurrency: **not covered**; the agent loop is serial, so no admission/batch
+  capacity claim is possible.

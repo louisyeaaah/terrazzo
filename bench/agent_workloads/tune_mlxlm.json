@@ -27,10 +27,15 @@
    {
     "task_id": "refcount",
     "set": "tune",
-    "success": true,
+    "keyword_pass": true,
+    "tool_trace_ok": true,
+    "truncated": true,
+    "complete_review": false,
     "wall_s": 35.2782451659441,
     "prompt_tokens": 10413,
     "completion_tokens": 217,
+    "final_finish_reason": "length",
+    "followup_finish_reason": "length",
     "tools_used": [
      {
       "name": "read_file",
@@ -41,10 +46,15 @@
    {
     "task_id": "cache",
     "set": "tune",
-    "success": true,
+    "keyword_pass": true,
+    "tool_trace_ok": true,
+    "truncated": true,
+    "complete_review": false,
     "wall_s": 62.17014675005339,
     "prompt_tokens": 19817,
     "completion_tokens": 216,
+    "final_finish_reason": "length",
+    "followup_finish_reason": "length",
     "tools_used": [
      {
       "name": "read_file",
@@ -55,10 +65,15 @@
    {
     "task_id": "mask",
     "set": "tune",
-    "success": true,
+    "keyword_pass": true,
+    "tool_trace_ok": true,
+    "truncated": true,
+    "complete_review": false,
     "wall_s": 18.768704082933255,
     "prompt_tokens": 8887,
     "completion_tokens": 218,
+    "final_finish_reason": "length",
+    "followup_finish_reason": "length",
     "tools_used": [
      {
       "name": "read_file",
@@ -67,19 +82,25 @@
     ]
    }
   ],
-  "success_rate": 1.0,
   "peak_rss_mb": 2526.0,
   "stats_after": {},
   "prefix_hits_before": null,
   "prefix_hits_after": null,
   "output_tokens": 651,
-  "aggregate_tok_s": 5.6
+  "aggregate_tok_s": 5.6,
+  "keyword_pass_rate": 1.0,
+  "complete_review_rate": 0.0,
+  "truncated_tasks": [
+   "refcount",
+   "cache",
+   "mask"
+  ],
+  "tool_trace_failures": []
  },
  "tasks": [
   {
    "task_id": "refcount",
    "set": "tune",
-   "success": true,
    "wall_s": 35.2782451659441,
    "requests": [
     {
@@ -197,12 +218,17 @@
    "final": "根据对 `terrazzo/blocks.py` 的审查，我发现了一个可能导致块泄漏或重复释放的具体风险：\n\n**风险：**\n在 `BlockManager.free()` 方法中，当 `blk.ref_count` 为 0 时，会删除 `self.hash_to_block` 中的条目。然而，如果 `blk.block_hash` 为 None，或者 `self.hash_to_block.get(blk.block_hash) == bid` 为 False，这可能会",
    "followup": "**结论：**  \n在 `BlockManager.free()` 方法中，当 `blk.ref_count` 为 0 时，会删除 `self.hash_to_block` 中的条目。然而，如果 `blk.block_hash` 为 None，或者 `self.hash_to_block.get(blk.block_hash) == bid` 为 False，这可能会导致 `self.hash_to_block` 中的条目被错误地删除，从而引发块泄漏或重复释放",
    "prompt_tokens": 10413,
-   "completion_tokens": 217
+   "completion_tokens": 217,
+   "keyword_pass": true,
+   "tool_trace_ok": true,
+   "truncated": true,
+   "complete_review": false,
+   "final_finish_reason": "length",
+   "followup_finish_reason": "length"
   },
   {
    "task_id": "cache",
    "set": "tune",
-   "success": true,
    "wall_s": 62.17014675005339,
    "requests": [
     {
@@ -320,12 +346,17 @@
    "final": "## 结论\n\n在 `terrazzo/engine.py` 中，`prefix_cache` 的命中与回退逻辑存在一个具体风险：**缓存统计或输出不一致**。当 `prefix_cache` 的命中逻辑与实际的缓存使用情况不一致时，可能导致 `prefix_hit_tokens` 和 `prefix_reuse_autos` 等指标统计不准确，从而影响性能监控和调试。\n\n### 风险详情\n\n- **",
    "followup": "## 结论\n\n如果 `runner` 最终没有复用 `prefix_cache`，则 `num_hits` 和 `prefix_hit_tokens` 应该**不增加**，因为缓存未被实际使用。然而，当前的代码逻辑中，`_insert_new` 方法中存在一个潜在的错误：即使 `prefix_cache` 没有被实际复用，`prefix_hit_tokens` 仍可能被错误地增加。\n\n###",
    "prompt_tokens": 19817,
-   "completion_tokens": 216
+   "completion_tokens": 216,
+   "keyword_pass": true,
+   "tool_trace_ok": true,
+   "truncated": true,
+   "complete_review": false,
+   "final_finish_reason": "length",
+   "followup_finish_reason": "length"
   },
   {
    "task_id": "mask",
    "set": "tune",
-   "success": true,
    "wall_s": 18.768704082933255,
    "requests": [
     {
@@ -443,7 +474,13 @@
    "final": "结论：在 `terrazzo/mask_patch.py` 中，`_install_padding_tracking` 函数中对 `BatchKVCache` 的 `prepare`、`finalize`、`extend` 和 `filter` 方法进行了重写。这些方法在 batch layout 改变时会重新计算 `_dsh_has_padding`，但没有正确处理 batch layout 改变后可能失效的路径。\n\n具体风险：当 batch layout 改变时，如果",
    "followup": "在 `terrazzo/mask_patch.py` 中，`_install_padding_tracking` 函数中对 `BatchKVCache` 的 `extend` 和 `filter` 方法进行了重写。当调用 `extend` 或 `filter` 方法时，如果 batch layout 发生变化，应该重新计算 `_dsh_has_padding`，以确保在 batch layout 改变后，`_dsh_has_padding` 的值是正确的。\n\n具体来说，`",
    "prompt_tokens": 8887,
-   "completion_tokens": 218
+   "completion_tokens": 218,
+   "keyword_pass": true,
+   "tool_trace_ok": true,
+   "truncated": true,
+   "complete_review": false,
+   "final_finish_reason": "length",
+   "followup_finish_reason": "length"
   }
  ]
 }

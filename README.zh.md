@@ -86,9 +86,10 @@ vLLM 单会话取第二次（稳态）运行；首次运行包含 kernel 热身�
   state/meta/logits，以及精确分块复刻都已验证。cached vs no-cache 的输出差异来自两者
   prefill 分块不同，是数值边界，不是快照损坏。见 [BENCHMARKS §65](BENCHMARKS.md)。
 - Decode-only 不含排队、prefill、首 token 等待，不能读成端到端速度。
-- 本地代码审查 agent 验收（Qwen3-4B）：缓存开启明显快于关闭，但该场景下原生 mlx-lm
-  更快。见 [bench/AGENT_WORKFLOW_REPORT.md](bench/AGENT_WORKFLOW_REPORT.md)；不做泛化的
-  “比 X 快”结论。
+- 本地代码审查 agent 评估（Qwen3-4B）：首轮是串行、96-token 上限，测的是限长工作流
+  时间，不是审查质量；缓存开启快于关闭，但该场景原生 mlx-lm 更快。见
+  [bench/AGENT_WORKFLOW_REPORT.md](bench/AGENT_WORKFLOW_REPORT.md)；不做泛化的“比 X 快”
+  或质量结论。
 
 ### 长系统提示：预注册是差异点
 
@@ -258,7 +259,7 @@ BENCHMARKS.md      所有测量数据，包括输掉的那些
 ## 测试与基准
 
 ```bash
-python -m unittest discover -s tests                  # 核心套件（267 个测试，1 skipped）
+python -m unittest discover -s tests                  # 核心套件（269 个测试，1 skipped）
 python -m unittest discover -s experiments/tests -v   # 实验内核（31 个测试）
 python scripts/ci_core_tests.py                       # MLX 被 block 的纯 Python 子集
 bash bench/head_to_head.sh                            # 与 Ollama 的 head-to-head

@@ -95,10 +95,11 @@ steady state as well.
   boundary, not evidence of snapshot corruption. See [BENCHMARKS §65](BENCHMARKS.md).
 - Decode-only numbers exclude queueing, prefill and first-token wait; do not read them as
   end-to-end speed.
-- Agent-workflow acceptance (local code review, Qwen3-4B): cache-on beats cache-off, but
-  native mlx-lm was faster in this scenario. See
+- Agent-workflow evaluation (local code review, Qwen3-4B): first run is serial and
+  96-token-capped, so it measures limited-length workflow time, not review quality;
+  cache-on beats cache-off, but native mlx-lm was faster. See
   [bench/AGENT_WORKFLOW_REPORT.md](bench/AGENT_WORKFLOW_REPORT.md); no blanket
-  "faster than X" claim.
+  "faster than X" or quality claim.
 
 ### Long system prompts: pre-registration is the differentiator
 
@@ -280,7 +281,7 @@ BENCHMARKS.md      every measurement, including the ones that lost
 ## Tests and benchmarks
 
 ```bash
-python -m unittest discover -s tests                  # core suite (267 tests, 1 skipped)
+python -m unittest discover -s tests                  # core suite (269 tests, 1 skipped)
 python -m unittest discover -s experiments/tests -v   # experimental kernels (31 tests)
 python scripts/ci_core_tests.py                       # pure-Python subset with MLX blocked
 bash bench/head_to_head.sh                            # Ollama head-to-head

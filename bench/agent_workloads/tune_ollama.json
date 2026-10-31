@@ -28,44 +28,69 @@
    {
     "task_id": "refcount",
     "set": "tune",
-    "success": false,
+    "keyword_pass": false,
+    "tool_trace_ok": false,
+    "truncated": true,
+    "complete_review": false,
     "wall_s": 18.792185208993033,
     "prompt_tokens": 4519,
     "completion_tokens": 192,
+    "final_finish_reason": "length",
+    "followup_finish_reason": "length",
     "tools_used": []
    },
    {
     "task_id": "cache",
     "set": "tune",
-    "success": false,
+    "keyword_pass": false,
+    "tool_trace_ok": false,
+    "truncated": true,
+    "complete_review": false,
     "wall_s": 12.164584083016962,
     "prompt_tokens": 4524,
     "completion_tokens": 192,
+    "final_finish_reason": "length",
+    "followup_finish_reason": "length",
     "tools_used": []
    },
    {
     "task_id": "mask",
     "set": "tune",
-    "success": false,
+    "keyword_pass": false,
+    "tool_trace_ok": false,
+    "truncated": true,
+    "complete_review": false,
     "wall_s": 11.302984916954301,
     "prompt_tokens": 4511,
     "completion_tokens": 192,
+    "final_finish_reason": "length",
+    "followup_finish_reason": "length",
     "tools_used": []
    }
   ],
-  "success_rate": 0.0,
   "peak_rss_mb": 31.0,
   "stats_after": {},
   "prefix_hits_before": null,
   "prefix_hits_after": null,
   "output_tokens": 576,
-  "aggregate_tok_s": 13.6
+  "aggregate_tok_s": 13.6,
+  "keyword_pass_rate": 0.0,
+  "complete_review_rate": 0.0,
+  "truncated_tasks": [
+   "refcount",
+   "cache",
+   "mask"
+  ],
+  "tool_trace_failures": [
+   "refcount",
+   "cache",
+   "mask"
+  ]
  },
  "tasks": [
   {
    "task_id": "refcount",
    "set": "tune",
-   "success": false,
    "wall_s": 18.792185208993033,
    "requests": [
     {
@@ -119,12 +144,17 @@
    "final": "",
    "followup": "",
    "prompt_tokens": 4519,
-   "completion_tokens": 192
+   "completion_tokens": 192,
+   "keyword_pass": false,
+   "tool_trace_ok": false,
+   "truncated": true,
+   "complete_review": false,
+   "final_finish_reason": "length",
+   "followup_finish_reason": "length"
   },
   {
    "task_id": "cache",
    "set": "tune",
-   "success": false,
    "wall_s": 12.164584083016962,
    "requests": [
     {
@@ -178,12 +208,17 @@
    "final": "",
    "followup": "",
    "prompt_tokens": 4524,
-   "completion_tokens": 192
+   "completion_tokens": 192,
+   "keyword_pass": false,
+   "tool_trace_ok": false,
+   "truncated": true,
+   "complete_review": false,
+   "final_finish_reason": "length",
+   "followup_finish_reason": "length"
   },
   {
    "task_id": "mask",
    "set": "tune",
-   "success": false,
    "wall_s": 11.302984916954301,
    "requests": [
     {
@@ -237,7 +272,13 @@
    "final": "",
    "followup": "",
    "prompt_tokens": 4511,
-   "completion_tokens": 192
+   "completion_tokens": 192,
+   "keyword_pass": false,
+   "tool_trace_ok": false,
+   "truncated": true,
+   "complete_review": false,
+   "final_finish_reason": "length",
+   "followup_finish_reason": "length"
   }
  ]
 }

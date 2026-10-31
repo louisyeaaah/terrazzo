@@ -136,8 +136,13 @@ def run_task(base: str, model: str, system: str, task: dict, max_tokens: int,
             messages.append(assistant)
             for call in r["tool_calls"]:
                 fn = call.get("function") or {}
-                tools_used.append({"name": fn.get("name"), "args": fn.get("arguments")})
-                messages.append(_tool_message(call))
+                tool_msg = _tool_message(call)
+                content = tool_msg.get("content") or ""
+                tools_used.append({"name": fn.get("name"),
+                                   "args": fn.get("arguments"),
+                                   "ok": not content.startswith("ERROR:"),
+                                   "error": content[:160] if content.startswith("ERROR:") else None})
+                messages.append(tool_msg)
             continue
         final = r["content"]
         break
@@ -154,9 +159,25 @@ def run_task(base: str, model: str, system: str, task: dict, max_tokens: int,
                                    "latency_s")}})
     text = (final + "\n" + r2["content"]).lower()
     rubric = [[w.lower() for w in group] for group in task["rubric"]]
-    success = all(any(w in text for w in group) for group in rubric)
+    keyword_pass = all(any(w in text for w in group) for group in rubric)
+    expected_file = task.get("file")
+    expected_read = any(
+        expected_file and expected_file in str(t.get("args") or "")
+        for t in tools_used
+    )
+    tool_trace_ok = expected_read and all(t.get("ok") for t in tools_used)
+    finish_reasons = [r["finish_reason"] for r in (r, r2)]
+    truncated = any(x == "length" for x in finish_reasons)
+    complete_review = (tool_trace_ok and not truncated
+                       and bool(final.strip()) and bool(r2["content"].strip()))
     return {
-        "task_id": task["id"], "set": task["set"], "success": success,
+        "task_id": task["id"], "set": task["set"],
+        "keyword_pass": keyword_pass,
+        "tool_trace_ok": tool_trace_ok,
+        "truncated": truncated,
+        "complete_review": complete_review,
+        "final_finish_reason": r["finish_reason"],
+        "followup_finish_reason": r2["finish_reason"],
         "wall_s": time.perf_counter() - t0,
         "requests": requests,
         "tools_used": tools_used,
@@ -265,9 +286,14 @@ def main() -> int:
         "prewarm": warm, "environment": env,
         "wall_s": round(wall, 2),
         "tasks": [{k: r[k] for k in
-                   ("task_id", "set", "success", "wall_s", "prompt_tokens",
-                    "completion_tokens", "tools_used")} for r in results],
-        "success_rate": sum(1 for r in results if r["success"]) / max(1, len(results)),
+                   ("task_id", "set", "keyword_pass", "tool_trace_ok",
+                    "truncated", "complete_review", "wall_s", "prompt_tokens",
+                    "completion_tokens", "finish_reason", "tools_used")
+                   if k in r} for r in results],
+        "keyword_pass_rate": sum(1 for r in results if r["keyword_pass"]) / max(1, len(results)),
+        "complete_review_rate": sum(1 for r in results if r["complete_review"]) / max(1, len(results)),
+        "truncated_tasks": [r["task_id"] for r in results if r["truncated"]],
+        "tool_trace_failures": [r["task_id"] for r in results if not r["tool_trace_ok"]],
         "peak_rss_mb": round(rss_peak, 0),
         "stats_after": {k: stats_after[k] for k in
                         ("prefix_cache", "prefix_hit_tokens", "mlx_peak_mb")

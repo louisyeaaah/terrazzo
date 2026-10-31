@@ -396,10 +396,15 @@
    {
     "task_id": "scheduler",
     "set": "holdout",
-    "success": true,
+    "keyword_pass": true,
+    "tool_trace_ok": true,
+    "truncated": true,
+    "complete_review": false,
     "wall_s": 50.73665645800065,
     "prompt_tokens": 12150,
     "completion_tokens": 217,
+    "final_finish_reason": "length",
+    "followup_finish_reason": "length",
     "tools_used": [
      {
       "name": "read_file",
@@ -410,10 +415,15 @@
    {
     "task_id": "request",
     "set": "holdout",
-    "success": true,
+    "keyword_pass": true,
+    "tool_trace_ok": true,
+    "truncated": true,
+    "complete_review": false,
     "wall_s": 116.52870949998032,
     "prompt_tokens": 20316,
     "completion_tokens": 216,
+    "final_finish_reason": "length",
+    "followup_finish_reason": "length",
     "tools_used": [
      {
       "name": "read_file",
@@ -422,7 +432,6 @@
     ]
    }
   ],
-  "success_rate": 1.0,
   "peak_rss_mb": 2466.0,
   "stats_after": {
    "prefix_cache": {
@@ -444,13 +453,19 @@
   "prefix_hits_before": 0,
   "prefix_hits_after": 12,
   "output_tokens": 433,
-  "aggregate_tok_s": 2.6
+  "aggregate_tok_s": 2.6,
+  "keyword_pass_rate": 1.0,
+  "complete_review_rate": 0.0,
+  "truncated_tasks": [
+   "scheduler",
+   "request"
+  ],
+  "tool_trace_failures": []
  },
  "tasks": [
   {
    "task_id": "scheduler",
    "set": "holdout",
-   "success": true,
    "wall_s": 50.73665645800065,
    "requests": [
     {
@@ -568,12 +583,17 @@
    "final": "## 结论\n\n在 `terrazzo/scheduler.py` 中，抢占和等待队列的实现存在一个可能导致请求饥饿或块泄漏的具体风险：**在调度过程中，部分填充的请求被旋转到队列的末尾，而没有被重新加入队列**。\n\n### 风险描述\n\n在 `schedule` 方法中，当一个请求的部分填充被处理后，如果它还有剩余的提示令牌，它会被添加到 `",
    "followup": "## 修复建议\n\n为了验证请求不再因队列旋转而饥饿，可以使用以下可观察指标：\n\n1. **等待队列长度 (Waiting Queue Length)**: 如果请求在调度周期中持续留在等待队列中，而没有被处理，队列长度可能会保持较高水平，表明请求可能被饥饿。\n\n2. **运行队列长度 (Running Queue Length)**: 如果请求在调度周期中被处理并进入运行队列，但",
    "prompt_tokens": 12150,
-   "completion_tokens": 217
+   "completion_tokens": 217,
+   "keyword_pass": true,
+   "tool_trace_ok": true,
+   "truncated": true,
+   "complete_review": false,
+   "final_finish_reason": "length",
+   "followup_finish_reason": "length"
   },
   {
    "task_id": "request",
    "set": "holdout",
-   "success": true,
    "wall_s": 116.52870949998032,
    "requests": [
     {
@@ -691,7 +711,13 @@
    "final": "## 结论\n\n在 `terrazzo/server.py` 中，`EngineRuntime` 类的 `submit` 方法中存在一个具体风险：如果请求在等待被接纳时超时，可能会导致请求卡住或统计失真。\n\n### 风险详情\n\n- **触发条件**：当请求被加入到 `_pending` 列表中，但未能在指定的 `wait_s` 时间内被接纳（即 `engine` 未能",
    "followup": "## 结论\n\n在 `terrazzo/server.py` 中，`EngineRuntime` 类的 `submit` 方法中存在一个具体风险：如果请求在等待被接纳时超时，可能会导致请求卡住或统计失真。\n\n### 风险详情\n\n- **触发条件**：当请求被加入到 `_pending` 列表中，但未能在指定的 `wait_s` 时间内被接纳（即 `engine` 未能",
    "prompt_tokens": 20316,
-   "completion_tokens": 216
+   "completion_tokens": 216,
+   "keyword_pass": true,
+   "tool_trace_ok": true,
+   "truncated": true,
+   "complete_review": false,
+   "final_finish_reason": "length",
+   "followup_finish_reason": "length"
   }
  ]
 }
