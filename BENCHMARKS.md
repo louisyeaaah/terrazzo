@@ -2417,8 +2417,9 @@ Ollama 仍用服务端 `eval_count/eval_duration`，`prompt_eval_duration` 不�
 因此目前能确认的是：
 
 - Gemma 4 E2B 的这条单请求分叉确实由 top1 打平后的采样选择差异触发；
-- Qwen3.5 0.8B / Qwen3-4B 的**服务输出 B 差异仍未由 split probe 解释**，不能归因为已证明的
-  near-tie，也不能把全部缓存差异归为 bf16；
+- Qwen3.5 0.8B / Qwen3-4B 的**服务输出 B 差异不能由 split probe 直接解释**；split probe
+  只证明这两条 prompt 的 argmax 没有在该分块下翻转。后续用精确 batch 分块复刻后，差异
+  定位到 prefill 分块边界（见下）；
 - 之前的 Qwen“首次分叉”表格作废，不再使用；
 - 不把“所有 A 通过、所有 B 是例外”当成通用结论；这只覆盖已测 prompt。
 
@@ -2428,26 +2429,36 @@ probe 脚本：`bench/first_divergence_probe.py`。最大绝对 logits 差不是
 快照恢复隔离（`bench/snapshot_restore_probe.py`，经 `PagedPrefixCache.store` 保存、
 `_seed_caches` 恢复；同一条 B prompt、同一 split=2432）：
 
-| 模型 | 快照类型 | live cache vs 保存/恢复 cache |
+| 模型 | 快照类型 | state/meta_state | suffix 末位 logits | 生成 token |
+|---|---|---|---|---|
+| Qwen3.5 0.8B | native | 全部相等 | max abs diff 0.0 | 一致 |
+| Qwen3-4B | dense KV | 全部相等 | max abs diff 0.0 | 一致 |
+| Gemma 4 E2B | native | 全部相等 | max abs diff 0.0 | 一致 |
+
+范围：仅这三条已测 prompt，不能外推成所有输入的状态/输出等价。结论是：**保存/恢复
+本身没有改变 state、meta_state、suffix logits 或 greedy token**。
+
+紧接着做“精确复刻 BatchGenerator 分块”的窄对照（`bench/batcher_chunk_probe.py`）：
+
+- cache 路径：suffix 17 tokens 被拆成 `16 + 1`；
+- no-cache 路径：完整 prompt 按 `512 + 512 + 512 + 512 + 400 + 1` 处理；
+- 用 direct model calls 精确复刻这两组分块，再比较 BatchGenerator 输出。
+
+| 模型 | manual cache == batcher cache | manual no-cache == batcher no-cache |
 |---|---|---|
-| Qwen3.5 0.8B | native | suffix + generation 逐 token 一致 |
-| Qwen3-4B | dense KV | suffix + generation 逐 token 一致 |
-| Gemma 4 E2B | native | suffix + generation 逐 token 一致 |
+| Qwen3.5 0.8B | 是 | 是 |
+| Qwen3-4B | 是 | 是 |
+| Gemma 4 E2B | 是 | 是 |
 
-结论：**save/restore 本身没有改变 argmax**。接下来把 probe 扩展到真实
-`BatchGenerator` 路径（同一 suffix 块）：
+因此服务 B 的 cache/no-cache 输出差异已经定位到 **prefill 分块边界**：cache 路径的
+`16+1` 与 no-cache 的 `512…400+1` 是不同数值路径；不是 snapshot 恢复，也没有观察到
+BatchGenerator merge/布局错误。此前“service B 未解释”的表述随之更新。
 
-| 模型 | direct live vs restored | BatchGenerator with cache vs no-cache |
-|---|---|---|
-| Qwen3.5 0.8B | 一致 | **不一致**：cache 短、no-cache 长，和服务 B 一致 |
-| Gemma 4 E2B | 一致 | **不一致**：标点分叉，和服务 B 一致 |
-| Qwen3-4B | 一致 | 本 prompt 一致 |
+仍开放的是 Qwen3-4B 标准 cache 的多轮 A（12 vs 13 tokens）；它不在这个单轮 B probe
+的覆盖范围内。
 
-因此当前证据把服务 B 差异缩小到 **BatchGenerator 的 cache-vs-no-cache 路径**，不是
-`PagedPrefixCache.store` 或 `_seed_caches` 恢复本身。下一步应查 BatchGenerator 的
-cache 插入/合并/prefill 形状；在查清前仍不宣称缓存一致性通过。
-
-数据：`bench/cache_equivalence_results.json`、`bench/native_cache_results.json`。
+数据：`bench/cache_equivalence_results.json`、`bench/native_cache_results.json`、
+`bench/snapshot_restore_results.json`、`bench/batcher_chunk_results.json`。
 
 ### 65.1 Batch 候选与 admission cap 复测
 

@@ -89,6 +89,25 @@ def run(model_path: str, split: int, system_tokens: int, question: str,
         raise RuntimeError("snapshot restore returned no caches")
     restored_for_batch = Engine.__new__(Engine)._seed_caches(stored, split)
 
+    # Compare the actual cache state, not only generated tokens.
+    def _arrays_equal(a, b):
+        if isinstance(a, list):
+            return len(a) == len(b) and all(_arrays_equal(x, y) for x, y in zip(a, b))
+        if isinstance(a, tuple):
+            return len(a) == len(b) and all(_arrays_equal(x, y) for x, y in zip(a, b))
+        if isinstance(a, mx.array) or isinstance(b, mx.array):
+            try:
+                if a.shape != b.shape:
+                    return False
+                return bool(mx.all(a == b).item())
+            except Exception:
+                return False
+        return a == b
+
+    state_equal = all(_arrays_equal(a.state, b.state)
+                      for a, b in zip(live, restored))
+    meta_equal = all(a.meta_state == b.meta_state for a, b in zip(live, restored))
+
     # Match the service's prefill shape: process the whole suffix as one chunk.
     suffix = ids[split:]
     a = model(mx.array([suffix]), cache=live)
@@ -97,6 +116,12 @@ def run(model_path: str, split: int, system_tokens: int, question: str,
     live_last, restored_last = a[0, -1, :], b[0, -1, :]
     sa, ma, ia, va = _choice(live_last)
     sb, mb, ib, vb = _choice(restored_last)
+    suffix_logits_max_diff = None
+    try:
+        suffix_logits_max_diff = float(mx.max(mx.abs(
+            live_last.astype(mx.float32) - restored_last.astype(mx.float32))).item())
+    except Exception:
+        pass
     suffix_first = None
     if sa != sb:
         suffix_first = {
@@ -147,6 +172,9 @@ def run(model_path: str, split: int, system_tokens: int, question: str,
         "model": model_path, "prompt_tokens": len(ids), "split": split,
         "eos_token_ids": sorted(eos),
         "snapshot_kind": "native" if snapshot is not None else "dense-kv",
+        "state_equal": state_equal,
+        "meta_state_equal": meta_equal,
+        "suffix_logits_max_abs_diff": suffix_logits_max_diff,
         "suffix_first_divergence": suffix_first,
         "generation_first_divergence": gen_first,
         "generated_ids_live": live_gen,

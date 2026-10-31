@@ -25,7 +25,7 @@
    "qwen3.5-0.8b": "concurrent B differs from serial no-cache; batching alone changes output"
   }
  },
- "conclusion": "corrected probe uses mx.argmax and service EOS rules; only Gemma shows a reproducible first output divergence (argmax tie at step 8). Qwen service B mismatch remains unexplained by this split probe and must not be attributed to a proven near-tie yet.",
+ "conclusion": "for the tested B prompt: snapshot state/meta/logits are exact, and exact-chunk manual calls reproduce both BatchGenerator paths. The cache/no-cache output difference is a prefill chunking effect; Qwen3-4B multi-turn A remains a separate open case.",
  "first_divergence_probe": "bench/first_divergence_probe.py",
  "first_divergence_results": "bench/first_divergence_results.json",
  "first_divergence": {
@@ -57,16 +57,14 @@
  "snapshot_restore_probe": "bench/snapshot_restore_probe.py",
  "snapshot_restore_results": "bench/snapshot_restore_results.json",
  "snapshot_restore": {
-  "direct_live_vs_restored": {
-   "qwen3.5-0.8b": "suffix+generation exact",
-   "qwen3-4b": "suffix+generation exact",
-   "gemma4-e2b": "suffix+generation exact"
-  },
-  "batcher_with_cache_vs_no_cache": {
-   "qwen3.5-0.8b": "cache path short; no-cache path long; matches service B",
-   "gemma4-e2b": "cache path differs by punctuation; matches service B",
-   "qwen3-4b": "both same for this prompt"
-  },
-  "conclusion": "snapshot save/restore is exact; service-level B difference is introduced by BatchGenerator cache-vs-no-cache path, not snapshot restore or output probe."
+  "result": "for the three tested prompts, stored/restored state and meta_state are exactly equal; suffix-end logits max abs diff 0.0; generated tokens exact",
+  "scope": "three prompts only, not a general proof"
+ },
+ "batcher_chunk_control": {
+  "method": "manual direct calls with exact batcher chunks",
+  "qwen3.5-0.8b": "cache chunks 16+1 reproduce batcher cache; no-cache chunks 512x4+400+1 reproduce batcher no-cache; both manual==batcher",
+  "qwen3-4b": "manual cache/no-cache both match batcher",
+  "gemma4-e2b": "manual cache/no-cache both match batcher",
+  "conclusion": "service B difference is explained by prefill chunk boundaries (cache suffix 16+1 vs no-cache 512...400+1), not snapshot restore or observed batcher merge error"
  }
 }

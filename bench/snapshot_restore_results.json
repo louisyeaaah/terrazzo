@@ -1,6 +1,6 @@
 {
  "probe": "bench/snapshot_restore_probe.py",
- "method": "PagedPrefixCache.store -> _seed_caches; suffix chunk; direct live vs restored; BatchGenerator with cache vs without cache; mx.argmax/EOS",
+ "method": "PagedPrefixCache.store -> _seed_caches; compare state/meta_state and suffix-end logits; then direct vs BatchGenerator",
  "results": [
   {
    "model": ".hf-models/qwen3.5-0.8b",
@@ -10,6 +10,9 @@
     248046
    ],
    "snapshot_kind": "native",
+   "state_equal": true,
+   "meta_state_equal": true,
+   "suffix_logits_max_abs_diff": 0.0,
    "suffix_first_divergence": null,
    "generation_first_divergence": null,
    "generated_ids_live": [
@@ -133,6 +136,9 @@
     151645
    ],
    "snapshot_kind": "dense-kv",
+   "state_equal": true,
+   "meta_state_equal": true,
+   "suffix_logits_max_abs_diff": 0.0,
    "suffix_first_divergence": null,
    "generation_first_divergence": null,
    "generated_ids_live": [
@@ -204,6 +210,9 @@
     106
    ],
    "snapshot_kind": "native",
+   "state_equal": true,
+   "meta_state_equal": true,
+   "suffix_logits_max_abs_diff": 0.0,
    "suffix_first_divergence": null,
    "generation_first_divergence": null,
    "generated_ids_live": [

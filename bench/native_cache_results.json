@@ -33,7 +33,7 @@
    "B": "differs (punctuation/continuation)"
   }
  },
- "verdict": "single A exact and actual reuse >0; direct snapshot save/restore is exact; service B difference matches BatchGenerator cache-vs-no-cache path, so next investigate batcher insertion/merge rather than snapshot",
+ "verdict": "single A exact and actual reuse >0; state/meta/suffix logits exact after snapshot restore; service B difference is explained by prefill chunking (cache suffix 16+1 vs no-cache 512...400+1), reproduced by manual exact chunks",
  "serial_B": "cached vs no-cache differs even with batch=1; stable per path",
  "batch1_B": "still differs (prefill/completion batch=1)"
 }
