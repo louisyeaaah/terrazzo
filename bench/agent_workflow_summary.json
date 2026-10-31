@@ -365,8 +365,11 @@
   "Reliability input-error/abort/eviction observed; final active missing, executor failure recovery not covered."
  ],
  "golden_review": {
-  "fixture": "bench/agent_fixtures/refcount_leak.py",
-  "human_signoff": "confirmed",
-  "accepted": true
+  "fixture": "bench/agent_fixtures/block_pool_review.py",
+  "leaked_prompt": "flow pass; core diagnosis correct; independent discovery not evaluated",
+  "neutral_qwen3_4b": "process complete but diagnosis incorrect; not accepted",
+  "neutral_qwen3_5_4b": "tool not called; follow-up truncated; rejected",
+  "human_signoff": "pending_user_confirmation",
+  "accepted": false
  }
 }

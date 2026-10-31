@@ -1,0 +1,8 @@
+{
+ "fixture": "bench/agent_fixtures/block_pool_review.py",
+ "visible_to_model": false,
+ "expected_defect": "release checks refcount == 1 instead of == 0; the last reference never returns the block to free_blocks",
+ "expected_trigger": "acquire(block) then release(block) when refcount reaches zero; free_blocks does not contain block and a later acquire fails",
+ "expected_fix": "change the condition to refcount == 0 and append to free_blocks",
+ "expected_followup": "minimal acquire/release reproduction and explicit ==0 condition"
+}

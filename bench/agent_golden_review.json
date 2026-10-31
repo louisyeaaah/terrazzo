@@ -1079,8 +1079,8 @@
   "minimal_fix_identified": true,
   "notes": "Agent correctly identified the ==1 condition, the zero-reference trigger, and ==0 + free_blocks fix. Minor wording error: it said the block \"remains in free_blocks\"; actually acquire removes it and release never returns it. Core diagnosis/fix are correct."
  },
- "human_signoff": "confirmed",
- "accepted": true,
+ "human_signoff": "pending_user_confirmation",
+ "accepted": false,
  "truncation": {
   "truncated": false,
   "final_finish_reason": "stop",
@@ -1091,5 +1091,13 @@
   "trigger_correct": true,
   "fix_correct": true
  },
- "human_signoff_date": "2026-10-31"
+ "human_signoff_date": "2026-10-31",
+ "user_review": {
+  "process_acceptance": "pass: tool call, both stops, no truncation",
+  "core_diagnosis_and_fix": "pass: ==1 defect, zero-reference trigger, ==0 fix",
+  "explanation_issue": "answer says block stays in free_blocks; actually acquire removes it and release never returns it",
+  "independent_defect_discovery": "not evaluated: fixture comments leaked the answer",
+  "human_signoff": "not given; reviewer said their review does not replace human sign-off"
+ },
+ "answer_leak": "fixture comments and tool output included the defect/fix; this run only validates flow + reading/patch suggestion"
 }

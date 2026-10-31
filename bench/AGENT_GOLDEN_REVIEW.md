@@ -28,7 +28,24 @@ Expected:
 - `complete_review=true`, `keyword_pass=true`, 362 completion tokens, 10.54 s.
 - Full request/response record: `bench/agent_golden_review.json`.
 
-## Manual review checklist (agent-checked; user sign-off pending)
+## Leaked-prompt run (flow only)
+
+The original fixture contained comments naming the defect and fix; those comments
+were returned to the model. That run proved flow/tool reading and a correct patch
+suggestion, but **not independent discovery**.
+
+## Neutral rerun (answer leak removed)
+
+- `bench/agent_fixtures/block_pool_review.py`: neutral comments/name; expected
+  defect/trigger/fix moved to `bench/agent_fixtures/block_pool_eval.json`, not sent
+  to the model.
+- Qwen3-4B run: tool read succeeded, both turns stopped, no truncation, but the
+  answer was **incorrect**: it claimed duplicate addition to `free_blocks` instead
+  of the `==1` vs `==0` leak. `keyword_pass=false`, `complete_review=true`.
+- Qwen3.5 4B attempt: no tool call and follow-up hit the length cap; rejected.
+- These raw answers are preserved; they are not rewritten.
+
+## Manual review checklist for the leaked-prompt run (sign-off pending)
 
 | Item | Result | Evidence |
 |---|---|---|
@@ -38,17 +55,21 @@ Expected:
 | Completeness | pass | First stop, follow-up stop, no pending tool calls, no truncation |
 | Wording | minor issue | Says block “stays in free_blocks”; actually it is removed on acquire and never returned |
 
-**Human sign-off: confirmed (2026-10-31).** The user confirmed defect, trigger
-and fix are all correct; `accepted=true`. The minor wording issue does not change
-the diagnosis or fix, and is retained in the record.
+**User review (not a sign-off):** process acceptance passes; core diagnosis/fix
+are correct for the leaked-prompt run, but the explanation has the state wording
+error. Independent discovery is not evaluated because the answer leaked. The user
+explicitly did not provide human sign-off; `accepted=false` remains.
 
 ## Preserved failure/truncation records
 
 The earlier 96-token runs remain in `bench/agent_workloads/` and are reclassified:
 `keyword_pass` 3/3 or 2/2, `complete_review=0`, `truncated=all` for tune/holdout.
-This golden run is the only non-truncated complete review so far.
+The leaked-prompt run completed without truncation; the neutral rerun also
+`complete_review=true` but its diagnosis is wrong. Neither is accepted.
 
 ## Next
 
-- Expand the known-defect task set only after this single-task acceptance.
-- Do not add performance configs or rerun the comparison matrix yet.
+- Do not expand the task set or rerun performance configs.
+- Either try a general review prompt (no answer hints) on another local model, or
+  record this as a failed independent-discovery case.
+- Human sign-off remains the user's decision.
